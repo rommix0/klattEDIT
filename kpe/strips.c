@@ -597,6 +597,10 @@ static LRESULT CALLBACK plot_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 	case WM_CAPTURECHANGED:
 		if (drag.mode == DRAG_PAINT || drag.mode == DRAG_LINE) /* capture lost mid-drag: keep what was painted */
 			finish_drag(drag.press_x);
+		else if (drag.mode != DRAG_NONE) {
+			drag.mode = DRAG_NONE;
+			InvalidateRect(h, NULL, FALSE);
+		}
 		return 0;
 	case WM_MOUSEWHEEL: {
 		POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
