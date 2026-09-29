@@ -1,5 +1,6 @@
 /* params.c - the parameter table (names, units, limits, defaults), version and error text. */
 #include <ctype.h>
+#include <math.h>
 #include <stddef.h>
 #include "klatt.h"
 #include "klatt_internal.h"
@@ -63,7 +64,9 @@ double klatt_clamp(int kind, int index, double v)
 	const klatt_param_info *t = table(kind, &n);
 	if (!t || index < 0 || index >= n)
 		return v;
-	if (!(v >= t[index].min)) /* also catches NaN */
+	if (isnan(v)) /* a signaling compare with an unmasked host would otherwise fault here */
+		return t[index].min;
+	if (!(v >= t[index].min))
 		return t[index].min;
 	if (v > t[index].max)
 		return t[index].max;

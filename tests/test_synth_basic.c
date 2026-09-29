@@ -75,6 +75,24 @@ static void test_frame_values_clamped(void)
 	CHECK(na == nb && memcmp(a, b, sizeof(short) * na) == 0);
 }
 
+/* F3: a NaN frame value must clamp to the parameter's minimum, same as any other out-of-range value, and
+ * must not raise an invalid-operation FP exception doing it (hosts with unmasked FP exceptions crash on a
+ * signaling NaN compare). */
+static void test_nan_frame_value_clamped(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	static short a[6000], b[6000];
+	t_default_globals(g);
+	t_default_frame(f);
+	f[KP_F1] = NAN;
+	f[KP_AV] = NAN;
+	int na = t_synth_steady(g, f, 100, a, 6000);
+	f[KP_F1] = 150; /* the F1 minimum */
+	f[KP_AV] = 0;   /* the AV minimum */
+	int nb = t_synth_steady(g, f, 100, b, 6000);
+	CHECK(na == nb && memcmp(a, b, sizeof(short) * na) == 0);
+}
+
 /* F1: formants at or above 0.45*SR are bypassed instead of stacking near Nyquist, so low sample rates
  * do not saturate. */
 static void check_no_overload_at_sr(double sr, int nfc)
@@ -130,6 +148,7 @@ void suite_synth_basic(void)
 	test_silence_is_exact_zero();
 	test_globals_clamped();
 	test_frame_values_clamped();
+	test_nan_frame_value_clamped();
 	test_low_sr_no_overload();
 	test_low_sr_formants_still_measured();
 }
