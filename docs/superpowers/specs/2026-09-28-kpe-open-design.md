@@ -46,7 +46,8 @@ kpe_open/
     klatt.h         public API
     klatt.c         synthesizer
     params.c        parameter table
-    klatt.def       exports, undecorated names
+    resonator.h     resonator and antiresonator
+    klatt_internal.h  helpers shared by the DLL's files
   kpe/            the editor
     model.c/.h      document, edit operations, undo (no Win32)
     csvio.c/.h      CSV pair load/save (no Win32)
@@ -284,6 +285,7 @@ void KlattDestroy(klatt_h h);
 - Targets: `make ARCH=32` (klatt32.dll + kpe.exe + tests), `make ARCH=64` (klatt64.dll + tests), `make all`,
   `make test` (runs the tests for both).
 - Flags: `-O2 -Wall -Wextra`, `-static-libgcc`, `-municode` for the editor. Output in `build/32/` and `build/64/`.
+- 32-bit exports: plain names through `--kill-at`; `dlltool -k` builds an import library with the decorated names.
 - `kpe.exe` links `klatt32.dll` through its import library. It is a 32-bit Unicode (`W` API) GUI program with a
   DPI-aware manifest, painting double-buffered with GDI.
 
