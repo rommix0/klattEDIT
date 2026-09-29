@@ -175,6 +175,8 @@ static int save(void)
 		return 0;
 	}
 	update_title();
+	if (r.message[0])
+		app_error(r.message);
 	return 1;
 }
 
@@ -304,6 +306,8 @@ static void cmd_paste(void)
 		app.sel_a = at;
 		app.sel_b = at + app.nclip - 1;
 		app_changed(CHG_FRAMES);
+	} else {
+		app_error("Out of memory.");
 	}
 }
 
@@ -318,6 +322,8 @@ static void cmd_insert(void)
 		app.sel_a = at;
 		app.sel_b = at + count - 1;
 		app_changed(CHG_FRAMES);
+	} else {
+		app_error("Out of memory.");
 	}
 }
 
