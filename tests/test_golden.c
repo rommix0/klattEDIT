@@ -33,8 +33,16 @@ void suite_golden(void)
 		csv_report r;
 		synth_result s;
 		swprintf(path, 260, L"../../samples/%ls.csv", samples[i]); /* the runner works in build/32 or build/64 */
-		CHECK(csv_load(path, &d, &r) == 0);
-		CHECK(synth_doc(&d, &s) == 0);
+		int csv_result = csv_load(path, &d, &r);
+		CHECK(csv_result == 0);
+		if (csv_result != 0)
+			continue;
+		int synth_result = synth_doc(&d, &s);
+		CHECK(synth_result == 0);
+		if (synth_result != 0) {
+			doc_free(&d);
+			continue;
+		}
 		swprintf(path, 260, L"golden_%ls.raw", samples[i]);
 		FILE *f = _wfopen(path, L"wb");
 		CHECK(f != NULL);
