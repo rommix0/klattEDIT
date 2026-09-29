@@ -6,8 +6,9 @@
 
 #define PI 3.14159265358979323846
 
-/* In-place iterative radix-2 FFT; n is a power of two. */
-static void fft(double *re, double *im, int n)
+/* In-place iterative radix-2 FFT; n is a power of two. tw_re/tw_im[j] hold cos/sin(-2*PI*j/n) for j in
+ * [0, n/2), precomputed once per spectro_compute call instead of recomputed in every butterfly. */
+static void fft(double *re, double *im, int n, const double *tw_re, const double *tw_im)
 {
 	for (int i = 1, j = 0; i < n; i++) {
 		int bit = n >> 1;
@@ -20,10 +21,10 @@ static void fft(double *re, double *im, int n)
 		}
 	}
 	for (int len = 2; len <= n; len <<= 1) {
-		double ang = -2 * PI / len;
+		int step = n / len; /* twiddle index k*step corresponds to angle -2*PI*k/len */
 		for (int i = 0; i < n; i += len)
 			for (int k = 0; k < len / 2; k++) {
-				double wr = cos(ang * k), wi = sin(ang * k);
+				double wr = tw_re[k * step], wi = tw_im[k * step];
 				double xr = re[i + k + len / 2] * wr - im[i + k + len / 2] * wi;
 				double xi = re[i + k + len / 2] * wi + im[i + k + len / 2] * wr;
 				re[i + k + len / 2] = re[i + k] - xr;
@@ -49,11 +50,19 @@ int spectro_compute(const short *pcm, int n, double sr, double window_ms, double
 	int ncols = (int)floor(dur_ms / step_ms) + 1, nbins = nfft / 2 + 1;
 	float *db = malloc(sizeof(float) * (size_t)ncols * nbins);
 	double *re = malloc(sizeof(double) * nfft), *im = malloc(sizeof(double) * nfft);
-	if (!db || !re || !im) {
+	double *tw_re = malloc(sizeof(double) * (nfft / 2)), *tw_im = malloc(sizeof(double) * (nfft / 2));
+	if (!db || !re || !im || !tw_re || !tw_im) {
 		free(db);
 		free(re);
 		free(im);
+		free(tw_re);
+		free(tw_im);
 		return -1;
+	}
+	for (int j = 0; j < nfft / 2; j++) {
+		double ang = -2 * PI * j / nfft;
+		tw_re[j] = cos(ang);
+		tw_im[j] = sin(ang);
 	}
 	for (int c = 0; c < ncols; c++) {
 		int centre = (int)lround(c * step_ms * sr / 1000), start = centre - win / 2;
@@ -65,12 +74,14 @@ int spectro_compute(const short *pcm, int n, double sr, double window_ms, double
 			double prev = s - 1 >= 0 && s - 1 < n ? pcm[s - 1] : 0;
 			re[i] = (x - 0.94 * prev) * (0.5 - 0.5 * cos(2 * PI * i / (win - 1)));
 		}
-		fft(re, im, nfft);
+		fft(re, im, nfft, tw_re, tw_im);
 		for (int b = 0; b < nbins; b++)
 			db[(size_t)c * nbins + b] = (float)(10 * log10(re[b] * re[b] + im[b] * im[b] + 1e-12));
 	}
 	free(re);
 	free(im);
+	free(tw_re);
+	free(tw_im);
 	out->ncols = ncols;
 	out->nbins = nbins;
 	out->step_ms = step_ms;
@@ -87,6 +98,8 @@ void spectro_free(kpe_spectro *s)
 
 void spectro_levels(const kpe_spectro *s, double range_db, unsigned char *out)
 {
+	if (range_db < 1) /* avoid dividing by zero or a negative range: see spectro.h */
+		range_db = 1;
 	size_t total = (size_t)s->ncols * s->nbins;
 	float top = -1e30f;
 	for (size_t i = 0; i < total; i++)

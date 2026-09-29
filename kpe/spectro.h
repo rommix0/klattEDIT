@@ -19,7 +19,8 @@ void spectro_free(kpe_spectro *s);
 #define SPECTRO_FLOOR_DB 20.0 /* below the power of a 1-LSB signal: cells under it are silence */
 
 /* Darkness per cell: 255 at the loudest cell, falling linearly to 0 at range_db below it. Cells below
- * SPECTRO_FLOOR_DB are 0, so silence stays white. */
+ * SPECTRO_FLOOR_DB are 0, so silence stays white. range_db is clamped to a minimum of 1 dB, so a caller
+ * passing 0 or a negative range cannot divide by zero. */
 void spectro_levels(const kpe_spectro *s, double range_db, unsigned char *out);
 
 #endif

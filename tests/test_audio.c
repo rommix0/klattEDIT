@@ -111,10 +111,36 @@ static void test_spectrogram_levels(void)
 	spectro_free(&s);
 }
 
+static void test_spectrogram_levels_range_db_guard(void)
+{
+	static short pcm[2205];
+	kpe_spectro s;
+	for (int i = 0; i < 2205; i++)
+		pcm[i] = (short)(8000 * sin(i * 0.5));
+	CHECK(spectro_compute(pcm, 2205, 11025, SPECTRO_WIDE_MS, 5, &s) == 0);
+	unsigned char *lv = malloc((size_t)s.ncols * s.nbins);
+	CHECK(lv != NULL);
+	spectro_levels(&s, 0, lv); /* range_db <= 0 must not divide by zero */
+	int top = 0;
+	for (int i = 0; i < s.ncols * s.nbins; i++)
+		if (lv[i] > top)
+			top = lv[i];
+	CHECK(top == 255);
+	spectro_levels(&s, -10, lv); /* negative too */
+	top = 0;
+	for (int i = 0; i < s.ncols * s.nbins; i++)
+		if (lv[i] > top)
+			top = lv[i];
+	CHECK(top == 255);
+	free(lv);
+	spectro_free(&s);
+}
+
 void suite_audio(void)
 {
 	test_synth_doc();
 	test_wav_header();
 	test_spectrogram_peak();
 	test_spectrogram_levels();
+	test_spectrogram_levels_range_db_guard();
 }
