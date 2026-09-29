@@ -55,9 +55,10 @@ KlattDestroy(h);
 
 ## Signal path
 
-- **Voicing:** an impulse at the start of each glottal period, through the glottal resonator RGP (FGP, BGP). That
-  goes through the glottal antiresonator RGZ (FGZ, BGZ) scaled by AV, and through RGS (FGP, BGS) scaled by AVS.
-  AV, AVS and F0 change only at the start of a period.
+- **Voicing:** an impulse each time the glottal phase (which advances by F0/SR per sample) wraps past 1, through
+  the glottal resonator RGP (FGP, BGP). That goes through the glottal antiresonator RGZ (FGZ, BGZ) scaled by AV,
+  and through RGS (FGP, BGS) scaled by AVS. F0 is read every frame, so a change takes effect within the current
+  period; AV and AVS are latched at each pulse.
 - **Noise:** a sum of four uniform random numbers, low-pass filtered (`y = x + 0.9·y[n-1]`), halved in the second
   half of each voiced period. AH scales it into aspiration, AF into frication.
 - **Cascade** (SW = 0): voicing + aspiration through the nasal pole (FNP, BNP), nasal zero (FNZ, BNZ) and

@@ -30,8 +30,9 @@ struct klatt_synth {
 	uint32_t rng;
 	int overload;
 
-	/* voicing source; av/avs/period change only at the start of a glottal period */
-	double period_len, period_pos;
+	/* voicing source; phase is the glottal phase in periods, wrapped to [0,1) while voiced, and pinned
+	 * at 1.0 while unvoiced so voicing starts with a pulse at once; av/avs latch at each pulse */
+	double phase;
 	double av, avs, av_next, avs_next, f0_next;
 	reson rgp, rgs;
 	antireson rgz;
@@ -109,7 +110,7 @@ KLATT_API void KLATT_CALL KlattReset(klatt_h s, unsigned seed)
 	s->frame = 0.0;
 	s->rng = seed;
 	s->overload = 0;
-	s->period_len = s->period_pos = 0.0;
+	s->phase = 1.0;
 	s->av = s->avs = s->av_next = s->avs_next = s->f0_next = 0.0;
 	s->noise_lp = s->par_prev = s->rad_prev = 0.0;
 	clear_reson(&s->rgp);
@@ -169,25 +170,30 @@ static void load_frame(struct klatt_synth *s, const double *in)
 
 static double sample(struct klatt_synth *s)
 {
-	/* Voicing: an impulse at the start of each glottal period. */
+	/* Voicing: an impulse each time the glottal phase wraps past 1, F0 read fresh every sample so a
+	 * change takes effect within the current period instead of waiting for it to finish. */
 	double pulse = 0.0;
-	if (s->period_len <= 0.0 || s->period_pos >= s->period_len) {
-		s->period_pos = s->period_len > 0.0 ? s->period_pos - s->period_len : 0.0;
+	int voiced = s->f0_next > 0.0;
+	if (voiced) {
+		s->phase += s->f0_next / s->sr;
+		if (s->phase >= 1.0) {
+			s->phase -= 1.0;
+			s->av = s->av_next;
+			s->avs = s->avs_next;
+			pulse = 1.0;
+		}
+	} else {
+		s->phase = 1.0;
 		s->av = s->av_next;
 		s->avs = s->avs_next;
-		s->period_len = s->f0_next > 0.0 ? s->sr / s->f0_next : 0.0;
-		if (s->period_len > 0.0)
-			pulse = 1.0;
 	}
-	if (s->period_len > 0.0)
-		s->period_pos += 1.0;
 	double gp = reson_step(&s->rgp, pulse);
 	double voice = s->av * antireson_step(&s->rgz, gp) + s->avs * reson_step(&s->rgs, gp);
 
 	/* Noise, halved in the second half of each voiced period. */
 	s->noise_lp = noise(s) + NOISE_POLE * s->noise_lp;
 	double n = s->noise_lp;
-	if (s->period_len > 0.0 && s->av > 0.0 && s->period_pos > 0.5 * s->period_len)
+	if (voiced && s->av > 0.0 && s->phase >= 0.5)
 		n *= 0.5;
 	double asp = s->ah * n, fric = s->af * n;
 

@@ -77,7 +77,8 @@ Everything marked "no Win32" is portable C that the test runner links directly.
 
 - **Voicing source:** an impulse train at F0, started pitch-synchronously, through the glottal resonator RGP
   (FGP, BGP) and the glottal antiresonator RGZ (FGZ, BGZ), scaled by AV. Quasi-sinusoidal voicing: the same
-  pulses through RGS (bandwidth BGS), scaled by AVS.
+  pulses through RGS (bandwidth BGS), scaled by AVS. F0 is read every frame (the glottal phase advances by
+  F0/SR per sample); AV and AVS are latched at each glottal pulse.
 - **Noise source:** a seeded pseudo-random generator, low-pass filtered. While voicing is on, the noise is
   amplitude-modulated over each pitch period as the paper describes. AH scales it for aspiration, AF for frication.
 - **Cascade branch** (voicing + aspiration): nasal pole RNP (FNP, BNP), nasal zero RNZ (FNZ, BNZ), then formant

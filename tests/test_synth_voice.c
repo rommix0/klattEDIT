@@ -100,6 +100,61 @@ static void test_sinusoidal_voicing(void)
 	CHECK(m_power_at(x, m, 11025, 100) / (ms * ms) > 0.7); /* mostly the fundamental */
 }
 
+/* F2: F0 changes take effect within the current period (a phase accumulator, not a period length fixed
+ * when the period starts), so a very low F0 does not freeze voicing for up to 1/F0 seconds. */
+static void test_low_f0_does_not_freeze_voicing(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	klatt_h h;
+	t_default_globals(g);
+	t_default_frame(f);
+	f[KP_AV] = 60;
+	f[KP_F0] = 1;
+	CHECK(KlattCreate(g, &h) == KLATT_OK);
+	short discard[64];
+	for (int k = 0; k < 5; k++)
+		CHECK(KlattSynthFrame(h, f, discard, 64) >= 0);
+	f[KP_F0] = 200;
+	int n = 0;
+	for (int k = 0; k < 20; k++)
+		n += KlattSynthFrame(h, f, buf + n, 64);
+	KlattDestroy(h);
+	int win = (int)(0.010 * 11025); /* 10 ms */
+	if (win > n) win = n;
+	CHECK(m_rms(buf, win) > 100); /* a pulse must show up quickly after F0 jumps up */
+}
+
+/* F2: an F0 onset ramp must not leave a silent gap after the first pulse. */
+static void test_f0_ramp_has_no_silent_gap(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	klatt_h h;
+	t_default_globals(g);
+	t_default_frame(f);
+	f[KP_AV] = 60;
+	CHECK(KlattCreate(g, &h) == KLATT_OK);
+	int n = 0;
+	for (int k = 0; k < 13; k++) { /* 0 -> 120 Hz linear onset ramp */
+		f[KP_F0] = 120.0 * k / 13.0;
+		n += KlattSynthFrame(h, f, buf + n, 64);
+	}
+	f[KP_F0] = 120;
+	for (int k = 0; k < 40; k++) /* steady 120 Hz */
+		n += KlattSynthFrame(h, f, buf + n, 64);
+	KlattDestroy(h);
+
+	int first = 0;
+	while (first < n && buf[first] == 0)
+		first++;
+	CHECK(first < n);
+	int win = (int)(0.020 * 11025); /* 20 ms */
+	int gap = 0;
+	for (int i = first; i + win <= n; i += 10)
+		if (m_rms(buf + i, win) < 5.0)
+			gap = 1;
+	CHECK(!gap);
+}
+
 void suite_synth_voice(void)
 {
 	test_cascade_vowels();
@@ -107,4 +162,6 @@ void suite_synth_voice(void)
 	test_level_and_no_overload();
 	test_overload_counted();
 	test_sinusoidal_voicing();
+	test_low_f0_does_not_freeze_voicing();
+	test_f0_ramp_has_no_silent_gap();
 }
