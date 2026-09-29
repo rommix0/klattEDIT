@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include "test.h"
 #include "optimize.h"
@@ -83,6 +84,21 @@ static void test_edge_cases(void)
 	CHECK(opt_simplify(two, 2, 0, 4, 1, NULL) == 2);
 }
 
+static void test_long_jagged_track(void)
+{
+	/* Stress test: 200000-frame track with alternating values and growing amplitude.
+	 * Tests that deep recursion does not cause stack overflow. */
+	double *v = malloc(200000 * sizeof(double));
+	CHECK(v != NULL);
+	for (int i = 0; i < 200000; i++)
+		v[i] = (i % 2 ? 1 : -1) * i * 0.001;
+	double err;
+	int kept = opt_simplify(v, 200000, 0, 1, 1e-9, &err);
+	CHECK(kept >= 2 && kept <= 200000);
+	CHECK(err <= 1e-9);
+	free(v);
+}
+
 void suite_optimize(void)
 {
 	test_straight_line_keeps_ends();
@@ -92,4 +108,5 @@ void suite_optimize(void)
 	test_grid_alignment();
 	test_step_survives();
 	test_edge_cases();
+	test_long_jagged_track();
 }
