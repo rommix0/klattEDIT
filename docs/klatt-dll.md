@@ -21,11 +21,14 @@ f[KP_AV] = 60;                                   /* a neutral vowel */
 
 klatt_h h;
 if (KlattCreate(g, &h) < 0) return;
-short buf[256];                                  /* at least KlattMaxFrameSamples(h) */
+int max = KlattMaxFrameSamples(h);
+short *buf = malloc(max * sizeof *buf);
 for (int k = 0; k < 200; k++) {                  /* 200 frames of 5 ms = 1 s */
-	int n = KlattSynthFrame(h, f, buf, 256);
+	int n = KlattSynthFrame(h, f, buf, max);
+	if (n < 0) break;
 	/* ... use n samples ... */
 }
+free(buf);
 KlattDestroy(h);
 ```
 
