@@ -40,5 +40,7 @@ int wav_write(const wchar_t *path, const short *pcm, int n, int sr)
 		ok = fwrite(s, 1, 2, f) == 2;
 	}
 	ok = (fclose(f) == 0) && ok;
+	if (!ok)
+		_wremove(path); /* do not leave a partial file behind */
 	return ok ? 0 : -1;
 }
