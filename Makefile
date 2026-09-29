@@ -44,6 +44,7 @@ check: build
 
 calibrate: | $(OUT)
 	$(CC) $(CFLAGS) -o $(OUT)/calibrate.exe tests/calibrate.c -static
+	$(OUT)/calibrate.exe
 
 all:
 	$(MAKE) ARCH=32 build
