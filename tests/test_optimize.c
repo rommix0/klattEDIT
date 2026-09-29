@@ -84,6 +84,28 @@ static void test_edge_cases(void)
 	CHECK(opt_simplify(two, 2, 0, 4, 1, NULL) == 2);
 }
 
+static void test_grid_less_than_one_normalized(void)
+{
+	double v[10], err;
+	for (int i = 0; i < 10; i++)
+		v[i] = i;
+	int kept = opt_simplify(v, 10, 0, 0, 1, &err); /* grid 0 normalized to 1, same as grid 1 */
+	CHECK(kept == 2); /* a straight line: only the two ends are needed */
+	CHECK_NEAR(err, 0, 1e-9);
+	CHECK_NEAR(v[5], 5, 1e-9);
+}
+
+static void test_grid_too_coarse_reports_max_err(void)
+{
+	double v[9], err;
+	/* A sharp corner at frame 4, but grid 8 only allows breakpoints at the two ends (0 and 8). */
+	for (int i = 0; i <= 8; i++)
+		v[i] = i <= 4 ? 10 * i : 40 - 10 * (i - 4);
+	int kept = opt_simplify(v, 9, 0, 8, 1, &err);
+	CHECK(kept == 2); /* grid too coarse to add the corner */
+	CHECK(err > 1);   /* max_err exceeds the tolerance */
+}
+
 static void test_long_jagged_track(void)
 {
 	/* Stress test: 200000-frame track with alternating values and growing amplitude.
@@ -108,5 +130,7 @@ void suite_optimize(void)
 	test_grid_alignment();
 	test_step_survives();
 	test_edge_cases();
+	test_grid_less_than_one_normalized();
+	test_grid_too_coarse_reports_max_err();
 	test_long_jagged_track();
 }
