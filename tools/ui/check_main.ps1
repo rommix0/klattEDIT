@@ -33,6 +33,7 @@ $WM_COMMAND = 0x111; $WM_LBUTTONDOWN = 0x201; $WM_LBUTTONUP = 0x202; $WM_MOUSEMO
 $p = Start-Process -FilePath "$Repo\build\32\kpe.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
 Start-Sleep -Milliseconds 1500
 $p.Refresh(); $main = $p.MainWindowHandle
+try {
 $plot = [U]::FindWindowExW($main, [IntPtr]::Zero, "KpePlot", $null)
 $c = New-Object U+RECT; [U]::GetClientRect($plot, [ref]$c) | Out-Null
 "plot client $($c.R)x$($c.B)"
@@ -96,4 +97,6 @@ $dlg = [U]::FindWindowW("#32770", "Parameter reference"); Shot $dlg "ui_paramref
 [U]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]1, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 400
 Shot $main "ui_after_cancel"
-Stop-Process -Id $p.Id -Force
+} finally {
+Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+}
