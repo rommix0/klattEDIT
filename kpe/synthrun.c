@@ -41,3 +41,9 @@ void synth_result_free(synth_result *r)
 	free(r->pcm);
 	memset(r, 0, sizeof *r);
 }
+
+long synth_frame_start(const kpe_doc *d, int k)
+{
+	double spf = d->globals[KG_SR] * d->globals[KG_FRAME_MS] / 1000.0;
+	return (long)floor(k * spf + 1e-9);
+}

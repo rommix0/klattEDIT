@@ -111,6 +111,35 @@ static void test_spectrogram_levels(void)
 	spectro_free(&s);
 }
 
+static void test_synth_frame_start(void)
+{
+	double frame_mss[3] = { 3.3, 4.1, 6.4 };
+	for (int i = 0; i < 3; i++) {
+		kpe_doc d;
+		synth_result s;
+		double g[NG];
+		t_default_globals(g);
+		g[KG_FRAME_MS] = frame_mss[i];
+		CHECK(doc_new(&d, g, 500) == 0);
+		CHECK(synth_doc(&d, &s) == 0);
+		CHECK(s.n == synth_frame_start(&d, d.nframes));
+		int k = d.nframes / 2;
+		/* AH (aspiration noise) excites every sample of the frame, unlike AV which is gated by the pitch
+		 * period and might not pulse within a single short frame. */
+		doc_set(&d, k, KP_AH, 60);
+		synth_result_free(&s);
+		CHECK(synth_doc(&d, &s) == 0);
+		int first_nonzero = -1;
+		for (int j = 0; j < s.n; j++)
+			if (s.pcm[j] != 0) { first_nonzero = j; break; }
+		CHECK(first_nonzero >= 0);
+		CHECK(first_nonzero >= synth_frame_start(&d, k));
+		CHECK(first_nonzero < synth_frame_start(&d, k + 1));
+		synth_result_free(&s);
+		doc_free(&d);
+	}
+}
+
 static void test_spectrogram_levels_range_db_guard(void)
 {
 	static short pcm[2205];
@@ -142,5 +171,6 @@ void suite_audio(void)
 	test_wav_header();
 	test_spectrogram_peak();
 	test_spectrogram_levels();
+	test_synth_frame_start();
 	test_spectrogram_levels_range_db_guard();
 }
