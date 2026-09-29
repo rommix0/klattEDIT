@@ -46,6 +46,17 @@ endif
 $(TESTS): $(TEST_SRC) $(CORE_SRC) $(wildcard tests/*.h kpe/*.h) $(DLL) | $(OUT)
 	$(CC) $(CFLAGS) -DKPE_TESTING -Itests -Ikpe -o $@ $(TEST_SRC) $(CORE_SRC) $(IMPLIB) -static
 
+KPE := $(OUT)/kpe.exe
+ifeq ($(ARCH),32)
+build: $(KPE)
+endif
+
+$(OUT)/kpe_res.o: kpe/kpe.rc kpe/resource.h kpe/kpe.manifest | $(OUT)
+	$(BIN)/windres.exe -I kpe -O coff -o $@ kpe/kpe.rc
+
+$(KPE): $(GUI_SRC) $(CORE_SRC) $(wildcard kpe/*.h) $(OUT)/kpe_res.o $(DLL)
+	$(CC) $(CFLAGS) -Ikpe -municode -mwindows -o $@ $(GUI_SRC) $(CORE_SRC) $(OUT)/kpe_res.o $(IMPLIB) -static -lcomctl32 -lcomdlg32 -lwinmm
+
 check: build
 	cd $(OUT) && ./run_tests.exe
 
