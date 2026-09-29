@@ -14,6 +14,7 @@ void suite_csvio(void);
 void suite_optimize(void);
 void suite_audio(void);
 void suite_view(void);
+void suite_golden(void);
 void suite_xarch(void);
 
 static const struct { const char *name; void (*fn)(void); } suites[] = {
@@ -27,6 +28,7 @@ static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "optimize", suite_optimize },
 	{ "audio", suite_audio },
 	{ "view", suite_view },
+	{ "golden", suite_golden },
 	{ "xarch", suite_xarch },
 };
 

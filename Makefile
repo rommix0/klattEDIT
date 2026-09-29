@@ -25,7 +25,7 @@ GUI_SRC   := $(addprefix kpe/,main.c strips.c table.c dialogs.c audio.c)
 CORE_SRC  := $(filter-out $(GUI_SRC),$(wildcard kpe/*.c))
 TESTS     := $(OUT)/run_tests.exe
 
-.PHONY: build check all test calibrate
+.PHONY: build check all test calibrate golden
 build: $(DLL) $(TESTS)
 
 $(OUT):
@@ -73,3 +73,8 @@ test:
 	$(MAKE) ARCH=64 check
 	$(BIN)/gcc.exe -O2 -Wall -o build/xarch_cmp.exe tools/xarch_cmp.c -static
 	build/xarch_cmp.exe build/32/xarch.raw build/64/xarch.raw
+
+# Run only after listening to build/32/golden_*.raw (or the samples in the editor) and approving them.
+golden: check
+	mkdir -p tests/golden
+	for f in $(OUT)/golden_*.raw; do cp $$f tests/golden/$${f##*/golden_}; done
