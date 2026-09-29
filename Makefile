@@ -21,6 +21,8 @@ endif
 KLATT_SRC := $(wildcard klatt/*.c)
 KLATT_HDR := $(wildcard klatt/*.h)
 TEST_SRC  := $(filter-out tests/calibrate.c,$(wildcard tests/*.c))
+GUI_SRC   := $(addprefix kpe/,main.c strips.c table.c dialogs.c audio.c)
+CORE_SRC  := $(filter-out $(GUI_SRC),$(wildcard kpe/*.c))
 TESTS     := $(OUT)/run_tests.exe
 
 .PHONY: build check all test calibrate
@@ -41,8 +43,8 @@ $(DLL): $(KLATT_SRC) $(KLATT_HDR) | $(OUT)
 	$(CC) $(CFLAGS) -DKLATT_BUILD -shared -o $@ $(KLATT_SRC) -static-libgcc -Wl,--out-implib,$(IMPLIB)
 endif
 
-$(TESTS): $(TEST_SRC) $(wildcard tests/*.h) $(DLL) | $(OUT)
-	$(CC) $(CFLAGS) -Itests -o $@ $(TEST_SRC) $(IMPLIB) -static
+$(TESTS): $(TEST_SRC) $(CORE_SRC) $(wildcard tests/*.h kpe/*.h) $(DLL) | $(OUT)
+	$(CC) $(CFLAGS) -Itests -Ikpe -o $@ $(TEST_SRC) $(CORE_SRC) $(IMPLIB) -static
 
 check: build
 	cd $(OUT) && ./run_tests.exe
