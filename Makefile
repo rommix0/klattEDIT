@@ -18,7 +18,7 @@ KLATT_HDR := $(wildcard klatt/*.h)
 TEST_SRC  := $(filter-out tests/calibrate.c,$(wildcard tests/*.c))
 TESTS     := $(OUT)/run_tests.exe
 
-.PHONY: build check all test
+.PHONY: build check all test calibrate
 build: $(DLL) $(TESTS)
 
 $(OUT):
@@ -41,6 +41,9 @@ $(TESTS): $(TEST_SRC) $(wildcard tests/*.h) $(DLL) | $(OUT)
 
 check: build
 	cd $(OUT) && ./run_tests.exe
+
+calibrate: | $(OUT)
+	$(CC) $(CFLAGS) -o $(OUT)/calibrate.exe tests/calibrate.c -static
 
 all:
 	$(MAKE) ARCH=32 build
