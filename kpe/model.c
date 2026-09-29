@@ -1,8 +1,27 @@
 /* model.c - document, edit operations and undo. See model.h. */
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include "model.h"
+
+#ifdef KPE_TESTING
+/* Test-only allocation-failure injection; see doc_test_fail_alloc in model.h. */
+static int fail_alloc_nth = 0;
+
+void doc_test_fail_alloc(int nth)
+{
+	fail_alloc_nth = nth;
+}
+
+static void *test_malloc(size_t n)
+{
+	if (fail_alloc_nth > 0 && --fail_alloc_nth == 0)
+		return NULL;
+	return malloc(n);
+}
+#define malloc(n) test_malloc(n)
+#endif
 
 typedef struct {
 	int index;       /* frame * NP + param */
@@ -27,6 +46,16 @@ static double clamp_param(int kind, int index, double v)
 	if (!(v >= pi.min))
 		return pi.min;
 	return v > pi.max ? pi.max : v;
+}
+
+/* Clamps a global to its range; SR, NFC and SW are whole numbers, so they are then rounded to the nearest
+ * integer (half away from zero). */
+static double clamp_global(int index, double v)
+{
+	v = clamp_param(KLATT_GLOBAL, index, v);
+	if (index == KG_SR || index == KG_NFC || index == KG_SW)
+		v = round(v);
+	return v;
 }
 
 static void step_free(undo_step *s)
@@ -84,7 +113,7 @@ int doc_init_from(kpe_doc *d, const double *globals, int nframes, double *frames
 {
 	memset(d, 0, sizeof *d);
 	for (int i = 0; i < NG; i++)
-		d->globals[i] = clamp_param(KLATT_GLOBAL, i, globals[i]);
+		d->globals[i] = clamp_global(i, globals[i]);
 	d->nframes = nframes;
 	d->frames = frames;
 	return 0;
@@ -92,13 +121,17 @@ int doc_init_from(kpe_doc *d, const double *globals, int nframes, double *frames
 
 int doc_new(kpe_doc *d, const double *globals, double duration_ms)
 {
+	if (!isfinite(duration_ms) || duration_ms <= 0 || duration_ms > DOC_MAX_DURATION_MS)
+		return -1;
 	double g[NG];
 	for (int i = 0; i < NG; i++)
-		g[i] = clamp_param(KLATT_GLOBAL, i, globals[i]);
+		g[i] = clamp_global(i, globals[i]);
 	int n = (int)lround(duration_ms / g[KG_FRAME_MS]);
 	if (n < 1)
 		n = 1;
-	double *f = malloc(sizeof(double) * NP * n);
+	if ((size_t)n > (SIZE_MAX / sizeof(double)) / NP) /* guard against overflow below */
+		return -1;
+	double *f = malloc(sizeof(double) * (size_t)NP * (size_t)n);
 	if (!f)
 		return -1;
 	for (int p = 0; p < NP; p++) {
@@ -154,11 +187,11 @@ void doc_begin(kpe_doc *d, const char *label)
 	}
 }
 
-void doc_end(kpe_doc *d)
+int doc_end(kpe_doc *d)
 {
 	undo_step *s = d->open;
 	if (!s)
-		return;
+		return -1;
 	d->open = NULL;
 	free(d->touched);
 	d->touched = NULL;
@@ -167,10 +200,12 @@ void doc_end(kpe_doc *d)
 		if (s->cells[i].old != s->cells[i].now)
 			s->cells[n++] = s->cells[i];
 	s->ncells = n;
-	if (n == 0)
+	if (n == 0) {
 		step_free(s);
-	else
-		record(d, s);
+		return 0;
+	}
+	record(d, s);
+	return 1;
 }
 
 /* Sets a cell inside the open transaction, remembering its first old value. */
@@ -235,17 +270,29 @@ void doc_paint(kpe_doc *d, int param, double t0_ms, double v0, double t1_ms, dou
 		doc_end(d);
 }
 
-/* Replaces frames [at, at + old_count) with new_count frames from data. Returns 0 or -1. */
-static int splice(kpe_doc *d, int at, int old_count, int new_count, const double *data)
+/* Builds the frame buffer that a splice replacing [at, at + old_count) with new_count frames from data would
+ * produce, without touching the document. Returns a malloc'd buffer (and sets *out_n), or NULL out of memory. */
+static double *splice_build(const kpe_doc *d, int at, int old_count, int new_count, const double *data, int *out_n)
 {
 	int n = d->nframes - old_count + new_count;
 	double *f = malloc(sizeof(double) * NP * (n > 0 ? n : 1));
 	if (!f)
-		return -1;
+		return NULL;
 	memcpy(f, d->frames, sizeof(double) * NP * at);
 	memcpy(f + NP * at, data, sizeof(double) * NP * new_count);
 	memcpy(f + NP * (at + new_count), d->frames + NP * (at + old_count),
 	       sizeof(double) * NP * (d->nframes - at - old_count));
+	*out_n = n;
+	return f;
+}
+
+/* Replaces frames [at, at + old_count) with new_count frames from data. Returns 0 or -1. */
+static int splice(kpe_doc *d, int at, int old_count, int new_count, const double *data)
+{
+	int n;
+	double *f = splice_build(d, at, old_count, new_count, data, &n);
+	if (!f)
+		return -1;
 	free(d->frames);
 	d->frames = f;
 	d->nframes = n;
@@ -325,7 +372,7 @@ int doc_set_globals(kpe_doc *d, const double *globals)
 		return -1;
 	double g[NG];
 	for (int i = 0; i < NG; i++)
-		g[i] = clamp_param(KLATT_GLOBAL, i, globals[i]);
+		g[i] = clamp_global(i, globals[i]);
 	if (memcmp(g, d->globals, sizeof g) == 0)
 		return 0;
 	double old_ms = d->globals[KG_FRAME_MS], new_ms = g[KG_FRAME_MS];
@@ -382,14 +429,27 @@ const char *doc_redo_label(const kpe_doc *d)
 	return d->nredo ? d->redo[d->nredo - 1]->label : "";
 }
 
-/* Applies a step backwards (undo) or forwards (redo). */
-static void apply(kpe_doc *d, undo_step *s, int forward)
+/* Applies a step backwards (undo) or forwards (redo). Every allocation it needs (the splice's replacement
+ * frame buffer) is made before any document state changes, so a failure leaves the document exactly as it
+ * was. Returns 0, or -1 out of memory. */
+static int apply(kpe_doc *d, undo_step *s, int forward)
 {
+	double *f = NULL;
+	int n = 0;
 	if (s->splice) {
-		if (forward)
-			splice(d, s->at, s->old_count, s->new_count, s->new_data);
-		else
-			splice(d, s->at, s->new_count, s->old_count, s->old_data);
+		int at = s->at;
+		int old_count = forward ? s->old_count : s->new_count;
+		int new_count = forward ? s->new_count : s->old_count;
+		const double *data = forward ? s->new_data : s->old_data;
+		f = splice_build(d, at, old_count, new_count, data, &n);
+		if (!f)
+			return -1;
+	}
+	/* Nothing past this point can fail: commit. */
+	if (s->splice) {
+		free(d->frames);
+		d->frames = f;
+		d->nframes = n;
 	}
 	if (s->globals)
 		memcpy(d->globals, forward ? s->new_g : s->old_g, sizeof d->globals);
@@ -400,24 +460,31 @@ static void apply(kpe_doc *d, undo_step *s, int forward)
 		for (int i = s->ncells - 1; i >= 0; i--)
 			d->frames[s->cells[i].index] = s->cells[i].old;
 	d->dirty = 1;
+	return 0;
 }
 
-void doc_undo(kpe_doc *d)
+int doc_undo(kpe_doc *d)
 {
 	if (!doc_can_undo(d))
-		return;
-	undo_step *s = d->undo[--d->nundo];
-	apply(d, s, 0);
+		return 1;
+	undo_step *s = d->undo[d->nundo - 1];
+	if (apply(d, s, 0) < 0)
+		return -1; /* step stays on the undo stack; document unchanged */
+	d->nundo--;
 	if (push(&d->redo, &d->nredo, &d->capredo, s) < 0)
 		step_free(s);
+	return 0;
 }
 
-void doc_redo(kpe_doc *d)
+int doc_redo(kpe_doc *d)
 {
 	if (!doc_can_redo(d))
-		return;
-	undo_step *s = d->redo[--d->nredo];
-	apply(d, s, 1);
+		return 1;
+	undo_step *s = d->redo[d->nredo - 1];
+	if (apply(d, s, 1) < 0)
+		return -1; /* step stays on the redo stack; document unchanged */
+	d->nredo--;
 	if (push(&d->undo, &d->nundo, &d->capundo, s) < 0)
 		step_free(s);
+	return 0;
 }

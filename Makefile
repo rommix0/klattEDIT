@@ -44,7 +44,7 @@ $(DLL): $(KLATT_SRC) $(KLATT_HDR) | $(OUT)
 endif
 
 $(TESTS): $(TEST_SRC) $(CORE_SRC) $(wildcard tests/*.h kpe/*.h) $(DLL) | $(OUT)
-	$(CC) $(CFLAGS) -Itests -Ikpe -o $@ $(TEST_SRC) $(CORE_SRC) $(IMPLIB) -static
+	$(CC) $(CFLAGS) -DKPE_TESTING -Itests -Ikpe -o $@ $(TEST_SRC) $(CORE_SRC) $(IMPLIB) -static
 
 check: build
 	cd $(OUT) && ./run_tests.exe
