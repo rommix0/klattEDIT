@@ -157,7 +157,8 @@ therefore 55 or 56 samples long and the total length is exact.
 
 ### 4.4 API
 
-`__stdcall` on 32-bit; names undecorated through `klatt.def`. Functions returning `int` return 0 or more on
+`__stdcall` on 32-bit; names undecorated through `--kill-at`; the build generates the import library (see
+section 7). Functions returning `int` return 0 or more on
 success and a negative `KLATT_ERR_*` code on failure. Parameter values are `double` in physical units.
 
 ```c
