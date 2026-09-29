@@ -10,6 +10,8 @@
 #include "csvio.h"
 
 #define MAX_COLS 64
+#define NAME_MAX_UTF8 (3 * MAX_PATH + 1) /* a MAX_PATH wide display name, worst case as UTF-8 */
+#define MAX_READABLE_SIZE 2000000000L    /* files at or above this size are rejected as too large */
 
 /* ---- small helpers ---- */
 
@@ -47,9 +49,27 @@ static char *read_file(const wchar_t *path)
 	FILE *f = _wfopen(path, L"rb");
 	if (!f)
 		return NULL;
-	fseek(f, 0, SEEK_END);
+	if (fseek(f, 0, SEEK_END) != 0) {
+		fclose(f);
+		errno = EIO;
+		return NULL;
+	}
 	long len = ftell(f);
-	fseek(f, 0, SEEK_SET);
+	if (len < 0) {
+		fclose(f);
+		errno = EIO;
+		return NULL;
+	}
+	if (len >= MAX_READABLE_SIZE) {
+		fclose(f);
+		errno = EFBIG;
+		return NULL;
+	}
+	if (fseek(f, 0, SEEK_SET) != 0) {
+		fclose(f);
+		errno = EIO;
+		return NULL;
+	}
 	char *buf = malloc(len + 1);
 	if (!buf || fread(buf, 1, len, f) != (size_t)len) {
 		free(buf);
@@ -139,6 +159,8 @@ static int map_header(char **cells, int n, int kind, int *map, int *time_col, co
 		*time_col = -1;
 	for (int c = 0; c < n; c++) {
 		map[c] = -1;
+		if (!cells[c][0])
+			continue; /* an empty header cell (e.g. a trailing comma): ignored, not an unknown column */
 		if (time_col && eq_nocase(cells[c], "time_ms")) {
 			if (*time_col >= 0) {
 				report(r, "%s line 1: column time_ms appears twice", file);
@@ -176,11 +198,12 @@ static double clamp_count(int kind, int idx, double v, int *clamped)
 /* ---- loading ---- */
 
 /* Parses name.globals.csv into g (defaults for missing columns). have_frame_ms reports whether the file set
- * FRAME_MS. Returns 1 if loaded, 0 if the file does not exist, -1 on an error (r set). */
-static int load_globals(const wchar_t *gpath, double *g, int *have_frame_ms, char *warn, size_t warnlen,
-                        csv_report *r)
+ * FRAME_MS; if so, raw_frame_ms receives the value as written in the file, before clamping. Returns 1 if
+ * loaded, 0 if the file does not exist, -1 on an error (r set). */
+static int load_globals(const wchar_t *gpath, double *g, int *have_frame_ms, double *raw_frame_ms, char *warn,
+                        size_t warnlen, csv_report *r)
 {
-	char file[260], *cells[MAX_COLS], *vals[MAX_COLS];
+	char file[NAME_MAX_UTF8], *cells[MAX_COLS], *vals[MAX_COLS];
 	int map[MAX_COLS];
 	base_utf8(gpath, file, sizeof file);
 	*have_frame_ms = 0;
@@ -212,6 +235,10 @@ static int load_globals(const wchar_t *gpath, double *g, int *have_frame_ms, cha
 			goto done;
 		}
 		int nv = split(line, vals, MAX_COLS);
+		if (nv < 0) {
+			report(r, "%s line %d: more than %d values", file, lineno, MAX_COLS);
+			goto done;
+		}
 		if (nv != nh) {
 			report(r, "%s line %d: expected %d values, found %d", file, lineno, nh, nv);
 			goto done;
@@ -224,9 +251,11 @@ static int load_globals(const wchar_t *gpath, double *g, int *have_frame_ms, cha
 				report(r, "%s line %d, column %s: \"%s\" is not a number", file, lineno, cells[c], vals[c]);
 				goto done;
 			}
-			g[map[c]] = clamp_count(KLATT_GLOBAL, map[c], v, &r->clamped);
-			if (map[c] == KG_FRAME_MS)
+			if (map[c] == KG_FRAME_MS) {
 				*have_frame_ms = 1;
+				*raw_frame_ms = v;
+			}
+			g[map[c]] = clamp_count(KLATT_GLOBAL, map[c], v, &r->clamped);
 		}
 	}
 	if (rows == 0) {
@@ -241,7 +270,7 @@ done:
 
 int csv_load(const wchar_t *path, kpe_doc *d, csv_report *r)
 {
-	char file[260], warn[400] = "", *cells[MAX_COLS], *vals[MAX_COLS];
+	char file[NAME_MAX_UTF8], warn[400] = "", frame_ms_warn[128] = "", *cells[MAX_COLS], *vals[MAX_COLS];
 	int map[MAX_COLS], time_col;
 	double g[NG], defaults[NP];
 	memset(r, 0, sizeof *r);
@@ -263,7 +292,7 @@ int csv_load(const wchar_t *path, kpe_doc *d, csv_report *r)
 		return -1;
 	}
 	int ret = -1, nh = 0, nframes = 0, cap = 0, lineno = 0;
-	double *frames = NULL, t_prev = 0, step = 0;
+	double *frames = NULL, t_prev = 0, step = 0, t0 = 0;
 	char *cur = text, *line;
 	while ((line = next_line(&cur))) {
 		lineno++;
@@ -284,6 +313,10 @@ int csv_load(const wchar_t *path, kpe_doc *d, csv_report *r)
 			continue;
 		}
 		int nv = split(line, vals, MAX_COLS);
+		if (nv < 0) {
+			report(r, "%s line %d: more than %d values", file, lineno, MAX_COLS);
+			goto done;
+		}
 		if (nv != nh) {
 			report(r, "%s line %d: expected %d values, found %d", file, lineno, nh, nv);
 			goto done;
@@ -310,6 +343,7 @@ int csv_load(const wchar_t *path, kpe_doc *d, csv_report *r)
 			if (c == time_col) {
 				if (nframes == 0) {
 					/* the first time may be anything; frames are re-timed from 0 on save */
+					t0 = v;
 				} else if (v <= t_prev) {
 					report(r, "%s line %d: time_ms %g does not increase", file, lineno, v);
 					goto done;
@@ -338,27 +372,41 @@ int csv_load(const wchar_t *path, kpe_doc *d, csv_report *r)
 
 	wchar_t gpath[MAX_PATH * 2];
 	int have_ms = 0;
+	double raw_ms = 0;
 	csv_globals_path(path, gpath, sizeof gpath / sizeof gpath[0]);
-	int gl = load_globals(gpath, g, &have_ms, warn, sizeof warn, r);
+	int gl = load_globals(gpath, g, &have_ms, &raw_ms, warn, sizeof warn, r);
 	if (gl < 0)
 		goto done;
 	r->globals_missing = gl == 0;
 	if (nframes >= 2) {
 		if (!have_ms) {
-			g[KG_FRAME_MS] = clamp_count(KLATT_GLOBAL, KG_FRAME_MS, step, &r->clamped);
+			double clamped_ms = clamp_count(KLATT_GLOBAL, KG_FRAME_MS, step, &r->clamped);
+			if (clamped_ms != step)
+				snprintf(frame_ms_warn, sizeof frame_ms_warn, "time_ms steps by %g ms; FRAME_MS clamped to %g ms",
+				         step, clamped_ms);
+			g[KG_FRAME_MS] = clamped_ms;
 		} else if (fabs(g[KG_FRAME_MS] - step) > 0.01) {
-			char gfile[260];
+			char gfile[NAME_MAX_UTF8];
 			base_utf8(gpath, gfile, sizeof gfile);
-			report(r, "FRAME_MS is %g ms in %s but time_ms steps by %g ms in %s", g[KG_FRAME_MS], gfile, step, file);
+			report(r, "FRAME_MS is %g ms in %s but time_ms steps by %g ms in %s", raw_ms, gfile, step, file);
 			goto done;
 		}
 	}
 	doc_init_from(d, g, nframes, frames);
 	frames = NULL;
-	if (r->unknown_columns)
-		report(r, "skipped unknown columns: %s", warn);
-	else
-		r->message[0] = 0;
+	r->message[0] = 0;
+	{
+		size_t mlen = 0;
+		if (frame_ms_warn[0])
+			mlen += (size_t)snprintf(r->message + mlen, sizeof r->message - mlen, "%s%s", mlen ? "; " : "",
+			                          frame_ms_warn);
+		if (t0 != 0)
+			mlen += (size_t)snprintf(r->message + mlen, sizeof r->message - mlen,
+			                          "%stimes start at %g ms; the document starts at 0 ms", mlen ? "; " : "", t0);
+		if (r->unknown_columns)
+			mlen += (size_t)snprintf(r->message + mlen, sizeof r->message - mlen, "%sskipped unknown columns: %s",
+			                          mlen ? "; " : "", warn);
+	}
 	ret = 0;
 done:
 	free(frames);
@@ -382,7 +430,7 @@ static void fmt_num(char *buf, size_t n, double v)
 static int write_tmp(const wchar_t *path, const wchar_t *tmp, int (*emit)(FILE *, const kpe_doc *),
                      const kpe_doc *d, csv_report *r)
 {
-	char file[260];
+	char file[NAME_MAX_UTF8];
 	base_utf8(path, file, sizeof file);
 	FILE *f = _wfopen(tmp, L"wb");
 	if (!f) {
@@ -440,16 +488,32 @@ static int emit_globals(FILE *f, const kpe_doc *d)
 
 int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 {
-	wchar_t gpath[MAX_PATH * 2], tmp[MAX_PATH * 2 + 8], gtmp[MAX_PATH * 2 + 8], bak[MAX_PATH * 2 + 8];
-	char file[260];
+	wchar_t gpath[MAX_PATH * 2], tmp[MAX_PATH * 2 + 16], gtmp[MAX_PATH * 2 + 16], bak[MAX_PATH * 2 + 16];
+	char file[NAME_MAX_UTF8];
 	int backup_made = 0;
 	memset(r, 0, sizeof *r);
 	csv_globals_path(path, gpath, sizeof gpath / sizeof gpath[0]);
 	_snwprintf(tmp, sizeof tmp / sizeof tmp[0], L"%ls.tmp", path);
 	_snwprintf(gtmp, sizeof gtmp / sizeof gtmp[0], L"%ls.tmp", gpath);
-	_snwprintf(bak, sizeof bak / sizeof bak[0], L"%ls.bak", path);
+	_snwprintf(bak, sizeof bak / sizeof bak[0], L"%ls.kpe-backup", path);
 	tmp[sizeof tmp / sizeof tmp[0] - 1] = gtmp[sizeof gtmp / sizeof gtmp[0] - 1] = 0;
 	bak[sizeof bak / sizeof bak[0] - 1] = 0;
+
+	/* A read-only target cannot be safely replaced (Windows allows renaming a read-only file, which would
+	 * strand the backup as read-only too); reject before touching anything. */
+	DWORD attr = GetFileAttributesW(path);
+	if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY)) {
+		base_utf8(path, file, sizeof file);
+		report(r, "%s is read-only", file);
+		return -1;
+	}
+	DWORD gattr = GetFileAttributesW(gpath);
+	if (gattr != INVALID_FILE_ATTRIBUTES && (gattr & FILE_ATTRIBUTE_READONLY)) {
+		base_utf8(gpath, file, sizeof file);
+		report(r, "%s is read-only", file);
+		return -1;
+	}
+
 	/* Both temporary files first, so a write error leaves both targets untouched. */
 	if (write_tmp(path, tmp, emit_frames, d, r) < 0)
 		return -1;
@@ -458,7 +522,7 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 		return -1;
 	}
 	/* For atomicity across both files, back up the old frame file before replacing it. */
-	if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) {
+	if (attr != INVALID_FILE_ATTRIBUTES) {
 		_wremove(bak); /* remove stale backup if present */
 		if (!MoveFileExW(path, bak, MOVEFILE_REPLACE_EXISTING)) {
 			base_utf8(path, file, sizeof file);
@@ -471,13 +535,15 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 	}
 	/* Move the temp frame file to the target. */
 	if (!MoveFileExW(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+		DWORD err1 = GetLastError();
 		base_utf8(path, file, sizeof file);
-		report(r, "cannot replace %s (Windows error %lu)", file, GetLastError());
+		report(r, "cannot replace %s (Windows error %lu)", file, err1);
 		if (backup_made) {
 			if (!MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING)) {
-				char bak_utf8[260];
+				DWORD err2 = GetLastError();
+				char bak_utf8[NAME_MAX_UTF8];
 				base_utf8(bak, bak_utf8, sizeof bak_utf8);
-				snprintf(r->message, sizeof r->message, "cannot restore %s from backup (Windows error %lu), previous version kept as %s", file, GetLastError(), bak_utf8);
+				report(r, "cannot replace %s (Windows error %lu); restore from backup also failed (Windows error %lu), previous version kept as %s", file, err1, err2, bak_utf8);
 			}
 		}
 		_wremove(tmp);
@@ -486,26 +552,31 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 	}
 	/* Move the temp globals file to the target. If this fails, restore the frame file backup. */
 	if (!MoveFileExW(gtmp, gpath, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-		base_utf8(gpath, file, sizeof file);
-		char gpath_utf8[260];
+		DWORD err1 = GetLastError();
+		char gpath_utf8[NAME_MAX_UTF8];
 		base_utf8(gpath, gpath_utf8, sizeof gpath_utf8);
 		if (backup_made) {
 			if (!MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING)) {
-				char bak_utf8[260];
+				DWORD err2 = GetLastError();
+				char bak_utf8[NAME_MAX_UTF8];
 				base_utf8(bak, bak_utf8, sizeof bak_utf8);
-				report(r, "cannot replace %s (Windows error %lu); restore of %s from backup also failed (Windows error %lu), previous version kept as %s", gpath_utf8, GetLastError(), file, GetLastError(), bak_utf8);
+				base_utf8(path, file, sizeof file);
+				report(r, "cannot replace %s (Windows error %lu); restore of %s from backup also failed (Windows error %lu), previous version kept as %s", gpath_utf8, err1, file, err2, bak_utf8);
 			} else {
-				report(r, "cannot replace %s (Windows error %lu), reverted to previous version", gpath_utf8, GetLastError());
+				report(r, "cannot replace %s (Windows error %lu), reverted to previous version", gpath_utf8, err1);
 			}
 		} else {
-			report(r, "cannot replace %s (Windows error %lu)", gpath_utf8, GetLastError());
+			report(r, "cannot replace %s (Windows error %lu)", gpath_utf8, err1);
 		}
 		_wremove(gtmp);
 		return -1;
 	}
-	/* Success: clean up the backup. */
-	if (backup_made)
-		_wremove(bak);
+	/* Success: clean up the backup, if any; a leftover backup is only a warning. */
+	if (backup_made && _wremove(bak) != 0) {
+		char bak_utf8[NAME_MAX_UTF8];
+		base_utf8(bak, bak_utf8, sizeof bak_utf8);
+		report(r, "saved; could not remove backup %s", bak_utf8);
+	}
 	d->dirty = 0;
 	return 0;
 }

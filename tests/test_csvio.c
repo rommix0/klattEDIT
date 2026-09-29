@@ -125,6 +125,186 @@ static void test_single_row_uses_default_frame_ms(void)
 	doc_free(&d);
 }
 
+static void test_globals_rounded_to_whole_numbers(void)
+{
+	kpe_doc d;
+	csv_report r;
+	write_text(L"round.csv", "time_ms,AV\n0,60\n");
+	write_text(L"round.globals.csv", "SR,NFC,SW\n11025.6,4.5,0.4\n");
+	CHECK(csv_load(L"round.csv", &d, &r) == 0);
+	CHECK_NEAR(d.globals[KG_SR], 11026, 0);
+	CHECK_NEAR(d.globals[KG_NFC], 5, 0);
+	CHECK_NEAR(d.globals[KG_SW], 0, 0);
+	doc_free(&d);
+}
+
+static void test_time_shift_warning(void)
+{
+	kpe_doc d;
+	csv_report r;
+	CHECK(load_text("time_ms,AV\n20,60\n30,60\n40,60\n", &d, &r) == 0);
+	CHECK(strcmp(r.message, "times start at 20 ms; the document starts at 0 ms") == 0);
+	doc_free(&d);
+}
+
+static void test_frame_ms_clamped_from_spacing_warning(void)
+{
+	kpe_doc d;
+	csv_report r;
+	/* time_ms steps by 25 ms, over FRAME_MS's max of 20; no globals file, so FRAME_MS is derived and clamped. */
+	CHECK(load_text("time_ms,AV\n0,60\n25,60\n50,60\n", &d, &r) == 0);
+	CHECK_NEAR(doc_frame_ms(&d), 20, 0);
+	CHECK(strcmp(r.message, "time_ms steps by 25 ms; FRAME_MS clamped to 20 ms") == 0);
+	doc_free(&d);
+}
+
+static void test_empty_header_cell_ignored(void)
+{
+	kpe_doc d;
+	csv_report r;
+	CHECK(load_text("time_ms,F1,\n0,500,\n5,600,\n", &d, &r) == 0);
+	CHECK(r.unknown_columns == 0);
+	CHECK(strcmp(r.message, "") == 0);
+	CHECK_NEAR(doc_get(&d, 1, KP_F1), 600, 0);
+	doc_free(&d);
+}
+
+static void test_too_many_values_reported(void)
+{
+	kpe_doc d;
+	csv_report r;
+	char text[2000] = "time_ms,F1\n0,500\n5";
+	for (int i = 0; i < 70; i++)
+		strcat(text, ",1");
+	strcat(text, "\n");
+	CHECK(load_text(text, &d, &r) == -1);
+	CHECK(strcmp(r.message, "t.csv line 3: more than 64 values") == 0);
+}
+
+static void test_globals_too_many_values_reported(void)
+{
+	kpe_doc d;
+	csv_report r;
+	write_text(L"gtoo.csv", "time_ms,AV\n0,60\n10,60\n");
+	char text[2000] = "SR\n11025";
+	for (int i = 0; i < 70; i++)
+		strcat(text, ",1");
+	strcat(text, "\n");
+	write_text(L"gtoo.globals.csv", text);
+	CHECK(csv_load(L"gtoo.csv", &d, &r) == -1);
+	CHECK(strcmp(r.message, "gtoo.globals.csv line 2: more than 64 values") == 0);
+}
+
+static void test_long_nonascii_name_in_message(void)
+{
+	kpe_doc d;
+	csv_report r;
+	/* A long, non-ASCII display name; message must name it correctly, not truncate or garble it. */
+	wchar_t path[100] = L"";
+	for (int i = 0; i < 40; i++)
+		wcscat(path, L"é"); /* 'e' with acute accent, 40 times */
+	wcscat(path, L".csv");
+	CHECK(csv_load(path, &d, &r) == -1);
+	char expect[300] = "cannot read ";
+	size_t used = strlen(expect);
+	int n = WideCharToMultiByte(CP_UTF8, 0, path, -1, expect + used, (int)(sizeof expect - used), NULL, NULL);
+	CHECK(n > 0);
+	CHECK(strncmp(r.message, expect, strlen(expect)) == 0);
+}
+
+static void set_readonly(const wchar_t *path, int ro)
+{
+	DWORD attr = GetFileAttributesW(path);
+	SetFileAttributesW(path, ro ? (attr | FILE_ATTRIBUTE_READONLY) : (attr & ~FILE_ATTRIBUTE_READONLY));
+}
+
+static void test_readonly_frame_file_rejected(void)
+{
+	kpe_doc d, e;
+	csv_report r;
+	double g[NG];
+	t_default_globals(g);
+	CHECK(doc_new(&d, g, 10) == 0);
+	CHECK(csv_save(L"ro.csv", &d, &r) == 0);
+	set_readonly(L"ro.csv", 1);
+	doc_set(&d, 0, KP_AV, 60);
+	CHECK(csv_save(L"ro.csv", &d, &r) == -1);
+	CHECK(strcmp(r.message, "ro.csv is read-only") == 0);
+	CHECK(!exists(L"ro.csv.tmp") && !exists(L"ro.globals.csv.tmp") && !exists(L"ro.csv.kpe-backup"));
+	set_readonly(L"ro.csv", 0); /* cleanup */
+	CHECK(csv_load(L"ro.csv", &e, &r) == 0);
+	CHECK_NEAR(doc_get(&e, 0, KP_AV), 0, 0); /* unchanged */
+	doc_free(&e);
+	doc_free(&d);
+}
+
+static void test_readonly_globals_file_rejected(void)
+{
+	kpe_doc d, e;
+	csv_report r;
+	double g[NG];
+	t_default_globals(g);
+	CHECK(doc_new(&d, g, 10) == 0);
+	CHECK(csv_save(L"rog.csv", &d, &r) == 0);
+	set_readonly(L"rog.globals.csv", 1);
+	doc_set(&d, 0, KP_AV, 60);
+	CHECK(csv_save(L"rog.csv", &d, &r) == -1);
+	CHECK(strcmp(r.message, "rog.globals.csv is read-only") == 0);
+	CHECK(!exists(L"rog.csv.tmp") && !exists(L"rog.globals.csv.tmp") && !exists(L"rog.csv.kpe-backup"));
+	set_readonly(L"rog.globals.csv", 0); /* cleanup */
+	CHECK(csv_load(L"rog.csv", &e, &r) == 0);
+	CHECK_NEAR(doc_get(&e, 0, KP_AV), 0, 0); /* unchanged */
+	doc_free(&e);
+	doc_free(&d);
+}
+
+static void test_globals_file_without_frame_ms(void)
+{
+	kpe_doc d;
+	csv_report r;
+	write_text(L"nofm.csv", "time_ms,AV\n0,60\n10,60\n20,60\n");
+	write_text(L"nofm.globals.csv", "SR,G0\n16000,55\n");
+	CHECK(csv_load(L"nofm.csv", &d, &r) == 0);
+	CHECK(!r.globals_missing);
+	CHECK_NEAR(doc_frame_ms(&d), 10, 0); /* derived from time_ms spacing: the file has no FRAME_MS column */
+	CHECK_NEAR(d.globals[KG_SR], 16000, 0);
+	doc_free(&d);
+}
+
+static void test_nonascii_path_round_trip(void)
+{
+	kpe_doc d, e;
+	csv_report r;
+	double g[NG];
+	t_default_globals(g);
+	CHECK(doc_new(&d, g, 20) == 0);
+	doc_set(&d, 0, KP_F1, 900);
+	const wchar_t *path = L"café-あ.csv"; /* non-ASCII path */
+	CHECK(csv_save(path, &d, &r) == 0);
+	CHECK(csv_load(path, &e, &r) == 0);
+	CHECK_NEAR(doc_get(&e, 0, KP_F1), 900, 0);
+	doc_free(&e);
+	doc_free(&d);
+}
+
+static void test_fractional_frame_ms_round_trip(void)
+{
+	kpe_doc d, e;
+	csv_report r;
+	double g[NG];
+	t_default_globals(g);
+	g[KG_FRAME_MS] = 6.4;
+	CHECK(doc_new(&d, g, 64) == 0); /* 10 frames */
+	doc_set(&d, 2, KP_F2, 1234);
+	CHECK(csv_save(L"frac.csv", &d, &r) == 0);
+	CHECK(csv_load(L"frac.csv", &e, &r) == 0);
+	CHECK(strcmp(r.message, "") == 0);
+	CHECK_NEAR(doc_frame_ms(&e), 6.4, 1e-9);
+	CHECK_NEAR(doc_get(&e, 2, KP_F2), 1234, 0);
+	doc_free(&e);
+	doc_free(&d);
+}
+
 static void test_globals_file(void)
 {
 	kpe_doc d;
@@ -224,7 +404,7 @@ static void test_save_atomicity_across_files(void)
 
 	/* Verify no stray temp or backup files. */
 	CHECK(!exists(L"atom.csv.tmp"));
-	CHECK(!exists(L"atom.csv.bak"));
+	CHECK(!exists(L"atom.csv.kpe-backup"));
 	CHECK(!exists(L"atom.globals.csv.tmp"));
 
 	doc_free(&d);
@@ -238,6 +418,18 @@ void suite_csvio(void)
 	test_subset_any_order_defaults();
 	test_unknown_columns_and_clamping();
 	test_single_row_uses_default_frame_ms();
+	test_globals_rounded_to_whole_numbers();
+	test_time_shift_warning();
+	test_frame_ms_clamped_from_spacing_warning();
+	test_empty_header_cell_ignored();
+	test_too_many_values_reported();
+	test_globals_too_many_values_reported();
+	test_long_nonascii_name_in_message();
+	test_readonly_frame_file_rejected();
+	test_readonly_globals_file_rejected();
+	test_globals_file_without_frame_ms();
+	test_nonascii_path_round_trip();
+	test_fractional_frame_ms_round_trip();
 	test_globals_file();
 	test_rejections();
 	test_failed_save_keeps_old_files();
