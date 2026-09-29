@@ -5,9 +5,11 @@
 int t_checks, t_fails;
 
 void suite_params(void);
+void suite_resonator(void);
 
 static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "params", suite_params },
+	{ "resonator", suite_resonator },
 };
 
 int main(void)
