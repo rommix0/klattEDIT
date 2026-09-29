@@ -288,7 +288,9 @@ void KlattDestroy(klatt_h h);
 - One `Makefile` using winlibs GCC 14.2: `C:\winlibs\mingw32` for 32-bit, `C:\winlibs\mingw64` for 64-bit.
 - Targets: `make ARCH=32` (klatt32.dll + kpe.exe + tests), `make ARCH=64` (klatt64.dll + tests), `make all`,
   `make test` (runs the tests for both).
-- Flags: `-O2 -Wall -Wextra`, `-static-libgcc`, `-municode` for the editor. Output in `build/32/` and `build/64/`.
+- Flags: `-O2 -Wall -Wextra`, `-static-libgcc`, `-municode` for the editor, `-ffp-contract=off` for both
+  architectures and `-msse2 -mfpmath=sse -mstackrealign` for 32-bit (so 32-bit output does not depend on the
+  host's x87 precision). Output in `build/32/` and `build/64/`.
 - 32-bit exports: plain names through `--kill-at`; `dlltool -k` builds an import library with the decorated names.
 - `kpe.exe` links `klatt32.dll` through its import library. It is a 32-bit Unicode (`W` API) GUI program with a
   DPI-aware manifest, painting double-buffered with GDI.

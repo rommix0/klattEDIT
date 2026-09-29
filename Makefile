@@ -11,7 +11,12 @@ CC     := $(BIN)/gcc.exe
 OUT    := build/$(ARCH)
 DLL    := $(OUT)/klatt$(ARCH).dll
 IMPLIB := $(OUT)/libklatt$(ARCH).a
-CFLAGS := -std=gnu11 -O2 -Wall -Wextra -Iklatt
+CFLAGS := -std=gnu11 -O2 -Wall -Wextra -Iklatt -ffp-contract=off
+ifeq ($(ARCH),32)
+# a host that sets 24-bit x87 precision (e.g. Direct3D) would otherwise change 32-bit output by a few LSB;
+# force SSE2 math so it does not depend on the x87 control word.
+CFLAGS += -msse2 -mfpmath=sse -mstackrealign
+endif
 
 KLATT_SRC := $(wildcard klatt/*.c)
 KLATT_HDR := $(wildcard klatt/*.h)
