@@ -458,9 +458,7 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 		return -1;
 	}
 	/* For atomicity across both files, back up the old frame file before replacing it. */
-	FILE *existing = _wfopen(path, L"rb");
-	if (existing) {
-		fclose(existing);
+	if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) {
 		_wremove(bak); /* remove stale backup if present */
 		if (!MoveFileExW(path, bak, MOVEFILE_REPLACE_EXISTING)) {
 			base_utf8(path, file, sizeof file);
@@ -475,8 +473,13 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 	if (!MoveFileExW(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
 		base_utf8(path, file, sizeof file);
 		report(r, "cannot replace %s (Windows error %lu)", file, GetLastError());
-		if (backup_made)
-			MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING);
+		if (backup_made) {
+			if (!MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING)) {
+				char bak_utf8[260];
+				base_utf8(bak, bak_utf8, sizeof bak_utf8);
+				snprintf(r->message, sizeof r->message, "cannot restore %s from backup (Windows error %lu), previous version kept as %s", file, GetLastError(), bak_utf8);
+			}
+		}
 		_wremove(tmp);
 		_wremove(gtmp);
 		return -1;
@@ -484,9 +487,19 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 	/* Move the temp globals file to the target. If this fails, restore the frame file backup. */
 	if (!MoveFileExW(gtmp, gpath, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
 		base_utf8(gpath, file, sizeof file);
-		report(r, "cannot replace %s (Windows error %lu)", file, GetLastError());
-		if (backup_made)
-			MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING);
+		char gpath_utf8[260];
+		base_utf8(gpath, gpath_utf8, sizeof gpath_utf8);
+		if (backup_made) {
+			if (!MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING)) {
+				char bak_utf8[260];
+				base_utf8(bak, bak_utf8, sizeof bak_utf8);
+				report(r, "cannot replace %s (Windows error %lu); restore of %s from backup also failed (Windows error %lu), previous version kept as %s", gpath_utf8, GetLastError(), file, GetLastError(), bak_utf8);
+			} else {
+				report(r, "cannot replace %s (Windows error %lu), reverted to previous version", gpath_utf8, GetLastError());
+			}
+		} else {
+			report(r, "cannot replace %s (Windows error %lu)", gpath_utf8, GetLastError());
+		}
 		_wremove(gtmp);
 		return -1;
 	}
