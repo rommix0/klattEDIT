@@ -53,3 +53,5 @@ all:
 test:
 	$(MAKE) ARCH=32 check
 	$(MAKE) ARCH=64 check
+	$(BIN)/gcc.exe -O2 -Wall -o build/xarch_cmp.exe tools/xarch_cmp.c -static
+	build/xarch_cmp.exe build/32/xarch.raw build/64/xarch.raw

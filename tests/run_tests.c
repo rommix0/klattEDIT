@@ -9,6 +9,7 @@ void suite_resonator(void);
 void suite_synth_basic(void);
 void suite_synth_voice(void);
 void suite_synth_noise(void);
+void suite_xarch(void);
 
 static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "params", suite_params },
@@ -16,6 +17,7 @@ static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "synth_basic", suite_synth_basic },
 	{ "synth_voice", suite_synth_voice },
 	{ "synth_noise", suite_synth_noise },
+	{ "xarch", suite_xarch },
 };
 
 int main(void)
