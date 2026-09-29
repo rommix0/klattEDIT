@@ -88,7 +88,7 @@ KLATT_API int KLATT_CALL KlattCreate(const double *globals, klatt_h *out)
 
 	reson_set(&s->rgp, s->g[KG_FGP], s->g[KG_BGP], s->sr);
 	antireson_set(&s->rgz, fmin(s->g[KG_FGZ], s->fmax), s->g[KG_BGZ], s->sr);
-	reson_set(&s->rgs, s->g[KG_FGP], s->g[KG_BGS], s->sr);
+	reson_set(&s->rgs, 0.0, s->g[KG_BGS], s->sr);
 	reson_set(&s->rnp, s->g[KG_FNP], s->g[KG_BNP], s->sr);
 	reson_set(&s->rnp_par, s->g[KG_FNP], s->g[KG_BNP], s->sr);
 	reson_set(&s->rc[4], fmin(s->g[KG_F5], s->fmax), s->g[KG_B5], s->sr);

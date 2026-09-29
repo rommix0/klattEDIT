@@ -100,6 +100,29 @@ static void test_sinusoidal_voicing(void)
 	CHECK(m_power_at(x, m, 11025, 100) / (ms * ms) > 0.7); /* mostly the fundamental */
 }
 
+/* F5: RGS (the AVS sinusoidal-voicing resonator) takes only a bandwidth, per the paper's 0 Hz low-pass; it
+ * must not be re-centred on FGP. BGP is set to its maximum here so RGP itself (upstream of both the AV and
+ * AVS paths, and shared by both regardless of this fix) stays close to flat as FGP moves; at the default
+ * BGP = 100, RGP alone swings the output far more than 10% as FGP goes from 0 to 400 (a separately known,
+ * parked calibration effect -- see the design doc's "not to fix now" list), which would swamp the much
+ * smaller effect under test here. */
+static void test_avs_independent_of_fgp(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	static short a[40000], b[40000];
+	t_default_globals(g);
+	t_default_frame(f);
+	g[KG_BGP] = 2000; /* the BGP maximum */
+	f[KP_AVS] = 60;
+	int na = t_synth_steady(g, f, 200, a, 40000);
+	double ra = m_rms(a + 1102, na - 1102);
+	g[KG_FGP] = 400;
+	int nb = t_synth_steady(g, f, 200, b, 40000);
+	double rb = m_rms(b + 1102, nb - 1102);
+	CHECK(ra > 0);
+	CHECK(fabs(rb - ra) <= 0.10 * ra);
+}
+
 /* F2: F0 changes take effect within the current period (a phase accumulator, not a period length fixed
  * when the period starts), so a very low F0 does not freeze voicing for up to 1/F0 seconds. */
 static void test_low_f0_does_not_freeze_voicing(void)
@@ -162,6 +185,7 @@ void suite_synth_voice(void)
 	test_level_and_no_overload();
 	test_overload_counted();
 	test_sinusoidal_voicing();
+	test_avs_independent_of_fgp();
 	test_low_f0_does_not_freeze_voicing();
 	test_f0_ramp_has_no_silent_gap();
 }
