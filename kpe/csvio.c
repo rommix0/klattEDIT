@@ -440,13 +440,16 @@ static int emit_globals(FILE *f, const kpe_doc *d)
 
 int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 {
-	wchar_t gpath[MAX_PATH * 2], tmp[MAX_PATH * 2 + 8], gtmp[MAX_PATH * 2 + 8];
+	wchar_t gpath[MAX_PATH * 2], tmp[MAX_PATH * 2 + 8], gtmp[MAX_PATH * 2 + 8], bak[MAX_PATH * 2 + 8];
 	char file[260];
+	int backup_made = 0;
 	memset(r, 0, sizeof *r);
 	csv_globals_path(path, gpath, sizeof gpath / sizeof gpath[0]);
 	_snwprintf(tmp, sizeof tmp / sizeof tmp[0], L"%ls.tmp", path);
 	_snwprintf(gtmp, sizeof gtmp / sizeof gtmp[0], L"%ls.tmp", gpath);
+	_snwprintf(bak, sizeof bak / sizeof bak[0], L"%ls.bak", path);
 	tmp[sizeof tmp / sizeof tmp[0] - 1] = gtmp[sizeof gtmp / sizeof gtmp[0] - 1] = 0;
+	bak[sizeof bak / sizeof bak[0] - 1] = 0;
 	/* Both temporary files first, so a write error leaves both targets untouched. */
 	if (write_tmp(path, tmp, emit_frames, d, r) < 0)
 		return -1;
@@ -454,19 +457,42 @@ int csv_save(const wchar_t *path, kpe_doc *d, csv_report *r)
 		_wremove(tmp);
 		return -1;
 	}
+	/* For atomicity across both files, back up the old frame file before replacing it. */
+	FILE *existing = _wfopen(path, L"rb");
+	if (existing) {
+		fclose(existing);
+		_wremove(bak); /* remove stale backup if present */
+		if (!MoveFileExW(path, bak, MOVEFILE_REPLACE_EXISTING)) {
+			base_utf8(path, file, sizeof file);
+			report(r, "cannot back up %s (Windows error %lu)", file, GetLastError());
+			_wremove(tmp);
+			_wremove(gtmp);
+			return -1;
+		}
+		backup_made = 1;
+	}
+	/* Move the temp frame file to the target. */
 	if (!MoveFileExW(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
 		base_utf8(path, file, sizeof file);
 		report(r, "cannot replace %s (Windows error %lu)", file, GetLastError());
+		if (backup_made)
+			MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING);
 		_wremove(tmp);
 		_wremove(gtmp);
 		return -1;
 	}
+	/* Move the temp globals file to the target. If this fails, restore the frame file backup. */
 	if (!MoveFileExW(gtmp, gpath, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
 		base_utf8(gpath, file, sizeof file);
 		report(r, "cannot replace %s (Windows error %lu)", file, GetLastError());
+		if (backup_made)
+			MoveFileExW(bak, path, MOVEFILE_REPLACE_EXISTING);
 		_wremove(gtmp);
 		return -1;
 	}
+	/* Success: clean up the backup. */
+	if (backup_made)
+		_wremove(bak);
 	d->dirty = 0;
 	return 0;
 }

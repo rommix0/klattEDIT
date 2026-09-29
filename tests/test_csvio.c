@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <windows.h>
 #include "test.h"
 #include "measure.h"
 #include "csvio.h"
@@ -196,6 +197,39 @@ static void test_failed_save_keeps_old_files(void)
 	doc_free(&d);
 }
 
+static void test_save_atomicity_across_files(void)
+{
+	kpe_doc d, e;
+	csv_report r;
+	double g[NG];
+	t_default_globals(g);
+	CHECK(doc_new(&d, g, 5) == 0);
+	CHECK(csv_save(L"atom.csv", &d, &r) == 0);
+
+	/* Open the globals file exclusively to block a save. */
+	HANDLE h = CreateFileW(L"atom.globals.csv", GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+	CHECK(h != INVALID_HANDLE_VALUE);
+
+	/* Try to save with the globals file locked. */
+	doc_set(&d, 0, KP_F1, 800);
+	CHECK(csv_save(L"atom.csv", &d, &r) == -1);
+	CHECK(strncmp(r.message, "cannot replace atom.globals.csv", 31) == 0);
+	CHECK(d.dirty); /* still dirty after failed save */
+
+	/* Close the lock and verify the frame file was NOT overwritten. */
+	CloseHandle(h);
+	CHECK(csv_load(L"atom.csv", &e, &r) == 0);
+	CHECK_NEAR(doc_get(&e, 0, KP_F1), 500, 0); /* original default, not 800 */
+	doc_free(&e);
+
+	/* Verify no stray temp or backup files. */
+	CHECK(!exists(L"atom.csv.tmp"));
+	CHECK(!exists(L"atom.csv.bak"));
+	CHECK(!exists(L"atom.globals.csv.tmp"));
+
+	doc_free(&d);
+}
+
 void suite_csvio(void)
 {
 	test_globals_path();
@@ -207,4 +241,5 @@ void suite_csvio(void)
 	test_globals_file();
 	test_rejections();
 	test_failed_save_keeps_old_files();
+	test_save_atomicity_across_files();
 }
