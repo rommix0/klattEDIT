@@ -53,6 +53,20 @@ KlattDestroy(h);
   exact even when a frame is not a whole number of samples (5 ms at 11025 Hz alternates 55 and 56).
 - The same inputs and seed always give the same samples.
 
+### `klatt_param_info` layout
+
+`klatt_param_info` (`const char *name, *unit, *description; double min, max, def;`) is not packed, so the three
+pointers before the doubles are followed by whatever padding gives `min` its natural 8-byte alignment. That
+padding differs by bitness:
+
+| Build | `sizeof(klatt_param_info)` | `offsetof(min)` |
+|---|---|---|
+| 32-bit (klatt32.dll) | 40 | 16 (4 bytes of padding after the three 4-byte pointers) |
+| 64-bit (klatt64.dll) | 48 | 24 (no padding: the three 8-byte pointers already align to 8) |
+
+VB6/Delphi callers must declare the record with natural alignment (the default) and must not mark it packed;
+a packed record reads `min`/`max`/`def` from the wrong offset on 32-bit.
+
 ## Signal path
 
 - **Voicing:** an impulse each time the glottal phase (which advances by F0/SR per sample) wraps past 1, through

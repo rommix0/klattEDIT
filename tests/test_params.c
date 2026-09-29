@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <string.h>
 #include "test.h"
 #include "klatt.h"
@@ -53,6 +54,16 @@ static void test_error_text(void)
 	CHECK(strcmp(KlattErrorText(-99), "unknown error") == 0);
 }
 
+/* F4: klatt_param_info's layout differs between 32- and 64-bit (natural pointer alignment pushes the
+ * doubles to a different offset); document the two layouts (docs/klatt-dll.md) and pin the current one. */
+static void test_param_info_layout(void)
+{
+	size_t want_size = sizeof(void *) == 8 ? 48 : 40;
+	size_t want_min_off = sizeof(void *) == 8 ? 24 : 16;
+	CHECK(sizeof(klatt_param_info) == want_size);
+	CHECK(offsetof(klatt_param_info, min) == want_min_off);
+}
+
 void suite_params(void)
 {
 	test_counts_and_version();
@@ -60,4 +71,5 @@ void suite_params(void)
 	test_every_default_within_limits();
 	test_index_lookup();
 	test_error_text();
+	test_param_info_layout();
 }
