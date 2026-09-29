@@ -1,0 +1,25 @@
+/* spectro.h - spectrogram of the synthesized sound, for the formant strip. */
+#ifndef KPE_SPECTRO_H
+#define KPE_SPECTRO_H
+
+#define SPECTRO_WIDE_MS 6.0    /* wideband window: resolves formants */
+#define SPECTRO_NARROW_MS 30.0 /* narrowband window: resolves harmonics */
+
+typedef struct {
+	int ncols, nbins;   /* column c is centred at c * step_ms; bin b is at b * bin_hz */
+	double step_ms, bin_hz;
+	float *db;          /* power in dB, ncols * nbins, column by column: db[c * nbins + b] */
+} kpe_spectro;
+
+/* Pre-emphasis 0.94, Hann window of window_ms centred on each column (zeros beyond the ends), FFT of the
+ * next power of two >= max(256, 2 * window). Returns 0, or -1 when out of memory or for bad arguments. */
+int spectro_compute(const short *pcm, int n, double sr, double window_ms, double step_ms, kpe_spectro *out);
+void spectro_free(kpe_spectro *s);
+
+#define SPECTRO_FLOOR_DB 20.0 /* below the power of a 1-LSB signal: cells under it are silence */
+
+/* Darkness per cell: 255 at the loudest cell, falling linearly to 0 at range_db below it. Cells below
+ * SPECTRO_FLOOR_DB are 0, so silence stays white. */
+void spectro_levels(const kpe_spectro *s, double range_db, unsigned char *out);
+
+#endif
