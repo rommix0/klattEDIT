@@ -54,6 +54,8 @@ kpe_open/
     spectro.c/.h    FFT and spectrogram image (no Win32)
     wavout.c/.h     WAV writer (no Win32)
     synthrun.c/.h   runs a document through the DLL (no Win32)
+    view.c/.h       plot geometry: strip layout, mapping, ticks (no Win32)
+    app.h, resource.h  state and IDs shared by the GUI files
     main.c          window, menus, accelerators
     strips.c        strips, axes, painting, cursor, selection
     table.c         frame table window
