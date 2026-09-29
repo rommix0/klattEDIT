@@ -75,6 +75,54 @@ static void test_frame_values_clamped(void)
 	CHECK(na == nb && memcmp(a, b, sizeof(short) * na) == 0);
 }
 
+/* F1: formants at or above 0.45*SR are bypassed instead of stacking near Nyquist, so low sample rates
+ * do not saturate. */
+static void check_no_overload_at_sr(double sr, int nfc)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	klatt_h h;
+	t_default_globals(g);
+	t_default_frame(f);
+	g[KG_SR] = sr;
+	g[KG_NFC] = nfc;
+	f[KP_AV] = 60;
+	CHECK(KlattCreate(g, &h) == KLATT_OK);
+	int n = 0;
+	int max = KlattMaxFrameSamples(h);
+	for (int k = 0; k < 200; k++) /* 1 s of 5 ms frames */
+		n += KlattSynthFrame(h, f, buf + n, max);
+	CHECK(KlattOverloadCount(h) == 0);
+	KlattDestroy(h);
+}
+
+static void test_low_sr_no_overload(void)
+{
+	check_no_overload_at_sr(8000, 5);
+	check_no_overload_at_sr(8000, 6);
+	check_no_overload_at_sr(10000, 5);
+}
+
+static void test_low_sr_formants_still_measured(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME], fm[8];
+	t_default_globals(g);
+	t_default_frame(f);
+	g[KG_SR] = 8000;
+	f[KP_AV] = 60;
+	f[KP_F1] = 500;
+	f[KP_F2] = 1500;
+	int n = t_synth_steady(g, f, 160, buf, 40000); /* 800 ms at 8000 Hz, 5 ms frames */
+	CHECK(n > 0);
+	const short *x = buf + 800; /* skip the first 100 ms */
+	int m = n - 800;
+	int k = m_formants(x, m, 8000, fm, 8);
+	CHECK(k >= 2);
+	if (k >= 2) {
+		CHECK_NEAR(fm[0], 500, 40);
+		CHECK_NEAR(fm[1], 1500, 75);
+	}
+}
+
 void suite_synth_basic(void)
 {
 	test_create_errors();
@@ -82,4 +130,6 @@ void suite_synth_basic(void)
 	test_silence_is_exact_zero();
 	test_globals_clamped();
 	test_frame_values_clamped();
+	test_low_sr_no_overload();
+	test_low_sr_formants_still_measured();
 }

@@ -89,6 +89,9 @@ Everything marked "no Win32" is portable C that the test runner links directly.
 - **Resonator:** `y[n] = A·x[n] + B·y[n-1] + C·y[n-2]` with `C = -exp(-2πBW·T)`,
   `B = 2·exp(-πBW·T)·cos(2πF·T)`, `A = 1 - B - C`. Antiresonator: the inverse filter. Coefficients are updated at
   each frame; the voicing-source filters follow the paper's pitch-synchronous update.
+- A formant resonator or antiresonator whose frequency is at or above 0.45 * SR is bypassed for that frame (the
+  cascade passes its input through; the parallel branch drops its contribution), so low sample rates effectively
+  use fewer formants.
 - **Amplitudes:** dB are converted to linear gain as in the paper, with 0 dB meaning off.
 - Internal arithmetic is `double`.
 

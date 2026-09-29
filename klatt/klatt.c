@@ -19,6 +19,7 @@
 #endif
 
 #define NOISE_POLE 0.9 /* noise low-pass y[n] = x[n] + NOISE_POLE*y[n-1]; with the radiation difference it is flat */
+#define K_BYPASS 0.45 /* a formant resonator/antiresonator at or above K_BYPASS*SR is bypassed for the frame */
 
 struct klatt_synth {
 	double g[KLATT_NUM_GLOBAL]; /* clamped globals */
@@ -41,6 +42,7 @@ struct klatt_synth {
 	reson rnp;                  /* cascade nasal pole */
 	antireson rnz;              /* cascade nasal zero */
 	reson rc[6];                /* cascade formants F1..F6 */
+	int bypass_np, bypass_nz, bypass_r[6]; /* set when the resonator's frequency is >= K_BYPASS*sr */
 
 	reson rp[6];                /* parallel formants F1..F6 */
 	reson rnp_par;              /* parallel nasal formant */
@@ -92,6 +94,9 @@ KLATT_API int KLATT_CALL KlattCreate(const double *globals, klatt_h *out)
 	reson_set(&s->rc[5], fmin(s->g[KG_F6], s->fmax), s->g[KG_B6], s->sr);
 	s->rp[4] = s->rc[4];
 	s->rp[5] = s->rc[5];
+	s->bypass_np = s->g[KG_FNP] >= K_BYPASS * s->sr;
+	s->bypass_r[4] = s->g[KG_F5] >= K_BYPASS * s->sr;
+	s->bypass_r[5] = s->g[KG_F6] >= K_BYPASS * s->sr;
 	KlattReset(s, 1);
 	*out = s;
 	return KLATT_OK;
@@ -144,9 +149,11 @@ static void load_frame(struct klatt_synth *s, const double *in)
 	static const int fi[4] = { KP_F1, KP_F2, KP_F3, KP_F4 };
 	double bw[4] = { p[KP_B1], p[KP_B2], p[KP_B3], s->g[KG_B4] };
 	for (int k = 0; k < 4; k++) {
+		s->bypass_r[k] = p[fi[k]] >= K_BYPASS * s->sr;
 		reson_set(&s->rc[k], fmin(p[fi[k]], s->fmax), bw[k], s->sr);
 		reson_set(&s->rp[k], fmin(p[fi[k]], s->fmax), bw[k], s->sr);
 	}
+	s->bypass_nz = p[KP_FNZ] >= K_BYPASS * s->sr;
 	antireson_set(&s->rnz, fmin(p[KP_FNZ], s->fmax), s->g[KG_BNZ], s->sr);
 
 	s->av_next = db_to_lin(p[KP_AV]);
@@ -184,31 +191,34 @@ static double sample(struct klatt_synth *s)
 		n *= 0.5;
 	double asp = s->ah * n, fric = s->af * n;
 
-	/* Cascade branch: voicing and aspiration (unless SW = 1). */
+	/* Cascade branch: voicing and aspiration (unless SW = 1). A resonator/antiresonator whose frequency is
+	 * at or above K_BYPASS*sr is bypassed: its input passes through unchanged. */
 	double casc = 0.0, par_voice = 0.0;
 	if (s->parallel_only) {
 		par_voice = voice + asp;
 	} else {
-		double x = reson_step(&s->rnp, voice + asp);
-		x = antireson_step(&s->rnz, x);
+		double x = voice + asp;
+		if (!s->bypass_np) x = reson_step(&s->rnp, x);
+		if (!s->bypass_nz) x = antireson_step(&s->rnz, x);
 		for (int k = s->nfc - 1; k >= 0; k--)
-			x = reson_step(&s->rc[k], x);
+			if (!s->bypass_r[k]) x = reson_step(&s->rc[k], x);
 		casc = x;
 	}
 
 	/* Parallel branch: frication, plus voicing when SW = 1. F1 gets undifferenced voicing only;
-	 * the others get the first difference of the voicing plus frication. Signs alternate. */
+	 * the others get the first difference of the voicing plus frication. Signs alternate. A bypassed
+	 * resonator contributes nothing. */
 	double dv = par_voice - s->par_prev;
 	s->par_prev = par_voice;
 	double src = dv + fric;
-	double par = s->a[0] * reson_step(&s->rp[0], par_voice)
-	           + s->an * reson_step(&s->rnp_par, dv)
-	           - s->a[1] * reson_step(&s->rp[1], src)
-	           + s->a[2] * reson_step(&s->rp[2], src)
-	           - s->a[3] * reson_step(&s->rp[3], src)
-	           + s->a[4] * reson_step(&s->rp[4], src)
-	           - s->a[5] * reson_step(&s->rp[5], src)
-	           + s->ab * src;
+	double t0 = s->bypass_r[0] ? 0.0 : s->a[0] * reson_step(&s->rp[0], par_voice);
+	double tn = s->bypass_np ? 0.0 : s->an * reson_step(&s->rnp_par, dv);
+	double t1 = s->bypass_r[1] ? 0.0 : s->a[1] * reson_step(&s->rp[1], src);
+	double t2 = s->bypass_r[2] ? 0.0 : s->a[2] * reson_step(&s->rp[2], src);
+	double t3 = s->bypass_r[3] ? 0.0 : s->a[3] * reson_step(&s->rp[3], src);
+	double t4 = s->bypass_r[4] ? 0.0 : s->a[4] * reson_step(&s->rp[4], src);
+	double t5 = s->bypass_r[5] ? 0.0 : s->a[5] * reson_step(&s->rp[5], src);
+	double par = t0 + tn - t1 + t2 - t3 + t4 - t5 + s->ab * src;
 
 	/* Radiation: first difference. */
 	double sum = casc + par;
