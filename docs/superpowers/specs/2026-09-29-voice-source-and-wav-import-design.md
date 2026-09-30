@@ -195,39 +195,67 @@ only to synthesize. The GUI adds the menu command and dialog.
 Frames are FRAME_MS (5 ms) apart; the analysis window for frame *k* is centred on (k + 0.5)·FRAME_MS, the middle of
 the samples the synthesizer renders for that frame.
 
-1. **Pitch:** YIN on the unfiltered signal, 40 ms window, F0 range from the voice type; per frame the best candidates,
-   an aperiodicity value and a voiced flag. A dynamic-programming pass over the whole file removes octave jumps, then
-   the voiced F0 track is smoothed.
+1. **Pitch:** YIN on the signal low-passed at 1.5 kHz (as the YIN paper recommends: unfiltered, a voiced fricative's
+   frication hides its voicing), an integration window of one longest period centred on the frame, 40 ms at most, F0
+   range from the voice type; per frame the best candidates, an aperiodicity value and a voiced flag. Frames more than
+   40 dB below the loudest are unvoiced; a frame next to a voiced one stays voiced while its aperiodicity is below
+   0.45. A dynamic-programming pass over each voiced run removes octave jumps, then the voiced F0 track is smoothed
+   (5-frame median); unvoiced frames take F0 interpolated from their voiced neighbours.
 2. **Formant candidates:** pre-emphasis 0.97, 25 ms Hann window, Burg LPC of order 2 + SR/1000 (rounded up to even),
    roots by a polynomial root finder; each root with positive frequency and radius at least 0.7 becomes a candidate
    (frequency, bandwidth), keeping those above 90 Hz, below 0.45·SR and narrower than 1000 Hz.
 3. **Formant tracks:** Viterbi over the whole file. Each frame's states are the ordered choices of up to four
    candidates for F1-F4; the cost adds the distance from the voice type's reference values, the candidates'
-   bandwidths and the frame-to-frame jump. Frames more than 40 dB below the loudest frame add no local cost, so the
-   tracks interpolate across silence. Tracks are clamped to the parameter ranges and below 0.45·SR.
+   bandwidths and the frame-to-frame jump. Frames more than 40 dB below the loudest frame take no part in the search
+   (no local and no transition cost) and their tracks are interpolated linearly across them. Tracks are clamped to the
+   parameter ranges and below 0.45·SR.
 4. **Bandwidths B1-B3:** from the chosen candidates, median-smoothed over 7 frames and clamped to 40-500 Hz.
-5. **Frame classes:** silence (more than 50 dB below the loudest frame), voiced, voiced fricative, voiceless
-   fricative, or aspiration (voiceless but not fricative, e.g. [h]), from the voiced flag and the fraction of energy
-   above 4 kHz (or 0.35·SR when that is lower). Class thresholds are named constants tuned on the test corpus.
-6. **Rd** (voiced frames): inverse-filter the pre-emphasized, windowed frame with its own LPC coefficients; golden-
+5. **Formant correction** (voices whose median voiced F0 is at least 150 Hz, where LPC's harmonic bias matters): two
+   analysis-by-synthesis passes synthesize the document's voicing, run the same LPC on it, and move F1-F3 by the WAV's
+   value minus the synthesis's (the synthesis candidate nearest the current value within 25 %, at most 20 % per pass).
+   Lower voices skip it: it gained them less than it cost.
+6. **Frame classes:** silence (more than 50 dB below the loudest frame), voiced, voiced fricative, voiceless
+   fricative, or aspiration (voiceless but not fricative, e.g. [h]), from the voiced flag and three measures: the
+   fraction of energy above 4 kHz (or 0.35·SR when that is lower); the flatness of the top band (power density from
+   0.41·SR to SR/2 against the densest 500 Hz band between 1 kHz and 0.41·SR); and the share of energy below the F1/F2
+   midpoint. A voiced frame is a voiced fricative from a fraction of 0.15 or a top band within 12 dB; an unvoiced frame
+   is a fricative from a fraction of 0.25, or from a top band within 25 dB with at most -8 dB of its energy below the
+   F1/F2 midpoint (this separates [ʃ] from breathy vowel onsets). The fricative decision is then the majority of the
+   non-silent frames within 5 frames, and a fricative run shorter than 40 ms is dropped. Class thresholds are named
+   constants tuned on the test corpus and the user's recordings; their comments give the measured ranges.
+7. **Rd** (every 12th frame of class voiced, 60 ms apart; not in voiced fricatives, whose residual is frication):
+   inverse-filter the pre-emphasized, windowed frame with its own LPC coefficients; golden-
    section search Rd in 0.3-2.7 to minimize the squared difference between the residual's mean-normalized dB
-   spectrum and a candidate's, over F0 to min(5·F0, 5000 Hz) (fextr's Method B). Each candidate is a DLL synthesis
-   of the frame's own analysed values (F0, F1-F4, B1-B3, AV) with SRC = 1 and the trial Rd, long enough to reach a
-   steady state, and it goes through exactly the same pre-emphasis, window and inverse filter (the WAV frame's LPC
-   coefficients) as the WAV frame. Anything the two sides share cancels, so a fitted Rd means what the synthesizer
-   does with it. The track is then smoothed; unvoiced frames hold the last value.
-7. **Levels, calibrated against the synthesizer:**
-   - Start: AV from the frame level (voiced classes); AH = AV + 10·log10(ap/(1 - ap)) from YIN's aperiodicity ap,
-     which is meaningful because `K_NOISE` makes AH and AV equally loud at equal dB; in aspiration frames AH from
-     the frame level; for fricative classes AF and A2-A6/AB from the energy in bands centred on F2-F6 (band edges
-     midway between neighbouring formants; AB covers the whole band above F1).
-   - Then three passes: synthesize the document, measure the same quantities on the synthesis as on the WAV (low-band
-     level below the F1/F2 midpoint for AV; overall level for AH in aspiration frames; the per-band levels for the
-     parallel amplitudes, whose mean correction goes to AF and the rest to A2-A6/AB), and correct each amplitude by
-     the dB difference. In voiced frames AH keeps its offset from AV.
+   spectrum and a candidate's, over F0 to min(5·F0, 5000 Hz) (fextr's Method B), to a bracket of 0.1, first within
+   0.5 of the previous fit in the same voiced run. Each candidate is a DLL synthesis of the frame's own analysed
+   values (F0, F1-F4, B1-B3; AV fixed at 60 dB, since the comparison is mean-normalized) with SRC = 1 and the trial
+   Rd, starting at least max(10 ms, 3 periods) before the window, and it goes through exactly the same pre-emphasis,
+   window and inverse filter (the WAV frame's LPC coefficients) as the WAV frame. Anything the two sides share
+   cancels, so a fitted Rd means what the synthesizer does with it. The fits are median-smoothed over 3 fits,
+   interpolated inside voiced runs and held elsewhere (1.0 if a file has no fit).
+8. **Levels, calibrated against the synthesizer:**
+   - Start values from three reference syntheses at 60 dB (a neutral vowel with AV, with AH, and AF with A2-A6):
+     AV from the frame level (voiced classes); in aspiration frames AH from the frame level; for fricative classes AF
+     and A2-A6 from the energy in bands centred on F2-F6 (band edges midway between neighbouring formants). AB stays
+     0: A2-A6 already tile the band above the F1/F2 midpoint, and AB would claim the same energy.
+   - Aspiration in voiced frames: AH = AV + 10·log10(ap/(1 - ap)) from YIN's aperiodicity ap (median-smoothed over 5
+     frames), which is meaningful because `K_NOISE` makes AH and AV equally loud at equal dB, but only from ap = 0.25
+     on; below it AH is 0. Real vowels read 0.01-0.2 in their steady part, and with a lower threshold they resynthesize
+     breathy. The cost: aspiration more than about 7 dB below AV is not imported. Voiced fricatives get AH 0 (their
+     aperiodic energy is the frication).
+   - Then calibration: the first pass synthesizes voicing and aspiration only and corrects AV (low-band level below
+     the F1/F2 midpoint) and AH in aspiration frames (overall level) by the dB difference; in voiced frames AH keeps
+     its offset from AV. The frication's band powers are the WAV's minus that synthesis's, and AF + A2-A6 are fitted
+     to them jointly with a model of the parallel branch (the resonators' complex responses with the DLL's signs,
+     scaled by a reference synthesis), because the parallel resonators leak into each other's bands and a per-band
+     correction settles on wrong splits. The largest parallel amplitude is set to 70 dB and AF takes the rest (only
+     AF + A*n* matters to the DLL). Two more passes synthesize the whole document, scale each band's target by the
+     WAV/synthesis ratio and refit, and correct AV and AH again.
    - Silence frames get all amplitudes 0. Values are clamped to their ranges and rounded (Rd to 0.01).
-8. **Result:** globals at their defaults except SR (the target), SRC = 1 and FRAME_MS = 5; the frames as analysed.
-   Optionally simplified with Optimize (every frame grid, default tolerances).
+9. **Result:** globals at their defaults except SR (the target), SRC = 1 and FRAME_MS = 5; the frames as analysed.
+   Optionally simplified with Optimize (every frame grid, default tolerances). Finally the document is synthesized
+   once 24 dB below the default G0 and G0 is set to the whole number that puts the resynthesis's peak at or just
+   below -1 dBFS; the amplitudes keep their calibrated values, so AV means the same as in the recording.
 
 ### 4.4 Voice types
 
@@ -243,7 +271,8 @@ References above the parameter maximum or 0.45·SR are clamped.
 
 - **File > Import WAV…** (asks to save unsaved changes first), then a file dialog, then a dialog with voice type
   (default adult male), target SR (default 11025; a note says children's voices need about 16000 so their formants
-  fit below Nyquist), and "Simplify with Optimize afterwards" (off by default).
+  fit below Nyquist), and "Simplify with Optimize afterwards" (off by default). The choices are remembered for the
+  session.
 - While it runs: wait cursor and "Analyzing…" in the status bar.
 - The result opens as a new unsaved document titled after the WAV; Save asks for a name, suggesting
   `<wav name>.csv`. Import is not an undo step (like Open).
@@ -257,8 +286,10 @@ All automated tests use synthetic audio made by the DLL from known documents, so
 - **Units:** WAV reader for every supported format and every refusal; resampler (tone frequency and level, image
   rejection); Burg on a known AR process (coefficients within 1 %); the root finder on polynomials with known roots;
   Viterbi on hand-made candidate sequences, including a missing and a spurious candidate.
-- **Round trip:** `ba.csv`, a female-range vowel sequence, /s/ and /z/ documents and an Rd sweep (SRC = 1), synthesized
-  and imported, compared on frames of each class at least 10 ms from a class boundary:
+- **Round trip:** `ba.csv`, a female-range vowel sequence, /asa/, /aza/, a /z/ with 10 dB weaker frication, an /aʃa/
+  with its frication at 2-4 kHz, an /ava/ with flat frication over damped voicing, and an Rd sweep (all but `ba.csv`
+  with SRC = 1), synthesized and imported, compared on frames of each class at least 10 ms from a class boundary
+  (in the source document):
 
   | Measure | Limit |
   |---|---|
@@ -269,16 +300,32 @@ All automated tests use synthetic audio made by the DLL from known documents, so
   | AV | within 3 dB |
   | Rd, steady voiced frames | within 0.3 |
   | Fricative band levels after calibration | within 3 dB |
+  | Every class with at least 10 steady frames | ≥ 90 % of them right |
+  | Steady vowel frames with frication | none |
+  | Resynthesis | no overload, peak at or below -1 dBFS |
 
+  "Within" is the 90th percentile of the per-frame absolute error. AV and Rd are compared only when the source
+  document uses the LF source like the import (so not for `ba.csv`: at equal AV the two sources' low-band levels
+  differ by a few dB depending on Rd, and Rd does not mean the same). For a voice whose median steady-voiced F0 is at
+  least 200 Hz, AV and Rd are judged on their medians: a 25 ms LPC cannot resolve B1 when the harmonics are 200 Hz or
+  more apart, and the Rd fit and AV then compensate the wrong bandwidth (female vowels: AV median 2 dB, 90th
+  percentile 7; Rd median 0.11, 90th 1.5). Fricative band levels are compared on bands within 30 dB of the frame's
+  strongest, less the G0 difference.
+- **Frame classes of the user's recordings** (manual, from the prototype): S and SH import as fricatives, V, Z and
+  ZH as voiced fricatives, the vowels as voiced with aspiration only at their onsets and offsets. Known limits: 30 of
+  V's 91 frames get no frication (the voicing alone already reaches the recording's level above 1 kHz), and a
+  plosive burst shorter than 40 ms imports as aspiration.
 - **Speed:** a 60 s WAV imports in at most 5 s (32-bit build, this machine), measured by a test that reports the time.
 - **Manual:** checklist items for the dialog and error messages, and listening checks on the user's recordings in
   `fextr_sept2026\wavs` (AE, IH, OW, S, SH, V, Z, ZH). Those recordings are not committed; their origin is unknown.
 
 ### 4.7 Performance
 
-The analysis is expected to take well under the budget (LPC of order 13 on 275-sample frames, a Viterbi over at most
-15 states, about 15 short syntheses per voiced frame for Rd, three whole-document syntheses). If the speed test misses
-5 s, a worker thread with progress and cancel is designed then.
+The prototype imports a 60 s, 11025 Hz WAV in 3.9 s on the 32-bit build (2.5 s on 64-bit): analysis 0.9 s, Rd
+1.6 s, calibration and normalization 1.3 s. That needed Rd on every 12th voiced frame, three calibration syntheses,
+a half-size complex FFT for real input, 5 refined YIN dips and tabulated resonator trig. A 48 kHz recording adds
+0.6 s of resampling; the formant correction of a high voice about 0.6 s per minute. The import stays synchronous;
+if the speed test ever misses 5 s, a worker thread with progress and cancel is designed then.
 
 ## 5. Changes to the base spec
 
