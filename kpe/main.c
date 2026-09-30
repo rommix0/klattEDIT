@@ -1,5 +1,6 @@
 /* main.c - the editor's main window: menus, panel, status bar, file commands, and keeping every view in step
  * with the document. */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,17 +90,24 @@ static void update_status_info(void)
 	SendMessageW(app.status, SB_SETTEXTW, 1, (LPARAM)t);
 }
 
-/* Recomputes the spectrogram of the current sound. */
+/* Recomputes the spectrogram of the current sound. The column step grows with the duration so very long
+ * documents do not need minutes and gigabytes to resynthesize on every edit; see SPECTRO_MAX_COLUMNS. */
 static void respectro(void)
 {
 	spectro_free(&app.spec);
 	free(app.levels);
 	app.levels = NULL;
+	double step_ms = fmax(SPECTRO_MIN_STEP_MS, doc_duration_ms(&app.doc) / SPECTRO_MAX_COLUMNS);
 	if (app.snd.pcm && spectro_compute(app.snd.pcm, app.snd.n, app.snd.sr,
-	                                   app.narrowband ? SPECTRO_NARROW_MS : SPECTRO_WIDE_MS, 2, &app.spec) == 0) {
+	                                   app.narrowband ? SPECTRO_NARROW_MS : SPECTRO_WIDE_MS, step_ms,
+	                                   &app.spec) == 0) {
 		app.levels = malloc((size_t)app.spec.ncols * app.spec.nbins);
 		if (app.levels)
 			spectro_levels(&app.spec, 50, app.levels);
+		free(app.spec.db); /* nothing reads the power matrix past spectro_levels; keep only the metadata */
+		app.spec.db = NULL;
+	} else if (app.snd.pcm) {
+		app_status(L"Spectrogram unavailable (out of memory)");
 	}
 	plot_new_spectrogram();
 }

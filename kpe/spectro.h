@@ -5,6 +5,9 @@
 #define SPECTRO_WIDE_MS 6.0    /* wideband window: resolves formants */
 #define SPECTRO_NARROW_MS 30.0 /* narrowband window: resolves harmonics */
 
+#define SPECTRO_MIN_STEP_MS 2.0   /* the narrowest column spacing, used up to SPECTRO_MAX_COLUMNS * this long */
+#define SPECTRO_MAX_COLUMNS 16000 /* longer documents use a wider step instead, so column count stays bounded */
+
 typedef struct {
 	int ncols, nbins;   /* column c is centred at c * step_ms; bin b is at b * bin_hz */
 	double step_ms, bin_hz;
