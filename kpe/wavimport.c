@@ -63,8 +63,10 @@
 #define FRIC_SWEEPS 6         /* coordinate sweeps of the frication fit */
 #define FRIC_STEP_DB 12.0     /* its pattern search: first step... */
 #define FRIC_STEP_MIN_DB 0.25 /* ...and last */
-#define PAR_TOP 70.0          /* the largest parallel amplitude of a fricative frame (AF takes the rest), clear of the
-                               * 80 dB limit so a correction never clamps */
+#define PAR_TOP 70.0          /* the largest parallel amplitude of a fricative frame (AF takes the rest, but at least
+                               * one step: the DLL treats AF 0 as off, and a quiet recording's frication, whose
+                               * strongest AF + An total is below PAR_TOP, would be switched off and could not be
+                               * refitted), clear of the 80 dB limit so a correction never clamps */
 #define BAND_RANGE_DB 30.0    /* fricative bands more than this below the frame's strongest weigh less in the fit */
 
 #define FCORR_PASSES 2        /* formant correction passes (F1-F3 by analysis-by-synthesis) */
@@ -750,7 +752,8 @@ static void fric_fit(double q[5][5][5], double scale, const double *t, double *x
 		}
 }
 
-/* AF and A2-A6 of frame v from the fitted gains: the largest amplitude is PAR_TOP, AF takes the rest. */
+/* AF and A2-A6 of frame v from the fitted gains: the largest amplitude is PAR_TOP, AF takes the rest but is at
+ * least one step, so any frication stays on (fric_get then inverts this: AF > 0 whenever a gain is positive). */
 static void fric_set(double *v, const double *x)
 {
 	double top = -1e300, tot[5];
@@ -765,7 +768,9 @@ static void fric_set(double *v, const double *x)
 			v[KP_A2 + j] = 0;
 		return;
 	}
-	double af = settle(KP_AF, top - PAR_TOP);
+	double af = settle(KP_AF, top - PAR_TOP), step = doc_param_step(KP_AF);
+	if (af < step)
+		af = step;
 	v[KP_AF] = af;
 	for (int j = 0; j < 5; j++)
 		v[KP_A2 + j] = tot[j] > -1e299 ? settle(KP_A2 + j, tot[j] - af) : 0;

@@ -248,9 +248,10 @@ the samples the synthesizer renders for that frame.
      its offset from AV. The frication's band powers are the WAV's minus that synthesis's, and AF + A2-A6 are fitted
      to them jointly with a model of the parallel branch (the resonators' complex responses with the DLL's signs,
      scaled by a reference synthesis), because the parallel resonators leak into each other's bands and a per-band
-     correction settles on wrong splits. The largest parallel amplitude is set to 70 dB and AF takes the rest (only
-     AF + A*n* matters to the DLL). Two more passes synthesize the whole document, scale each band's target by the
-     WAV/synthesis ratio and refit, and correct AV and AH again.
+     correction settles on wrong splits. The largest parallel amplitude is set to 70 dB and AF takes the rest, but at
+     least 1 dB, so that the frication of a quiet recording is not switched off (only AF + A*n* matters to the DLL).
+     Two more passes synthesize the whole document, scale each band's target by the WAV/synthesis ratio and refit, and
+     correct AV and AH again.
    - Silence frames get all amplitudes 0. Values are clamped to their ranges and rounded (Rd to 0.01).
 9. **Result:** globals at their defaults except SR (the target), SRC = 1 and FRAME_MS = 5; the frames as analysed.
    Optionally simplified with Optimize (every frame grid, default tolerances). Finally the document is synthesized
@@ -286,10 +287,10 @@ All automated tests use synthetic audio made by the DLL from known documents, so
 - **Units:** WAV reader for every supported format and every refusal; resampler (tone frequency and level, image
   rejection); Burg on a known AR process (coefficients within 1 %); the root finder on polynomials with known roots;
   Viterbi on hand-made candidate sequences, including a missing and a spurious candidate.
-- **Round trip:** `ba.csv`, a female-range vowel sequence, /asa/, /aza/, a /z/ with 10 dB weaker frication, an /aʃa/
-  with its frication at 2-4 kHz, an /ava/ with flat frication over damped voicing, and an Rd sweep (all but `ba.csv`
-  with SRC = 1), synthesized and imported, compared on frames of each class at least 10 ms from a class boundary
-  (in the source document):
+- **Round trip:** `ba.csv`, a female-range vowel sequence, /asa/, /asa/ 48 dB quieter, /aza/, a /z/ with 10 dB weaker
+  frication, an /aʃa/ with its frication at 2-4 kHz, an /ava/ with flat frication over damped voicing, and an Rd sweep
+  (all but `ba.csv` with SRC = 1), synthesized and imported, compared on frames of each class at least 10 ms from a
+  class boundary (in the source document):
 
   | Measure | Limit |
   |---|---|

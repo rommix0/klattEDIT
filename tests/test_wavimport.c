@@ -26,6 +26,12 @@
                                 * cannot resolve B1 there, and Rd and AV absorb the bandwidth error */
 #define LIM_CLASS 0.90         /* every class with at least MIN_CLASS_FRAMES steady frames: this share right */
 #define MIN_CLASS_FRAMES 10
+#define LIM_FRIC_AF 0.90       /* steady fricative frames imported with AF > 0: at least this share */
+#define QUIET_DB -48.0         /* the quiet /asa/ is this much below the synthesis: peak about -50 dBFS, where the
+                                * strongest AF + An total is below PAR_TOP (at -40 dB the unfixed import still found
+                                * AF in 34 of 35 steady fricative frames) */
+#define LIM_VUV_QUIET 0.94     /* V/UV for a scaled WAV: frame 146's aperiodicity (0.448 against the 0.45 hold) is
+                                * level-sensitive, so one borderline frame flips as soon as the WAV is scaled */
 #define LIM_AH_DB 5.0          /* a breathy vowel's AH, median over its steady frames */
 #define PEAK_MAX_DB -0.5       /* the resynthesis of a full-scale WAV peaks in this range (dBFS) */
 #define PEAK_MIN_DB -3.0
@@ -197,13 +203,17 @@ static double *pcm_to_double(const synth_result *s)
  * normalization) and leaves the amplitudes as calibrated at the default G0, so the band levels of its synthesis are
  * compared less the G0 difference, and AV directly. "Within" is the 90th percentile of the per-frame error, or the
  * median for a voice whose median F0 is HIGH_VOICE_F0 or more. Also: every well-represented class right in at least
- * LIM_CLASS of its steady frames, no steady vowel frame imported with frication, no overload in the resynthesis. */
-static void round_trip(const char *name, const kpe_doc *src, int voice)
+ * LIM_CLASS of its steady frames, no steady vowel frame imported with frication, at least LIM_FRIC_AF of the steady
+ * fricative frames with AF > 0, no overload in the resynthesis. The WAV is scaled by gain_db first (the import does
+ * not normalize its input, so the amplitudes follow: AV is compared with the source's plus gain_db). */
+static void round_trip_gain(const char *name, const kpe_doc *src, int voice, double gain_db)
 {
 	int same_source = src->globals[KG_SRC] == 1;
 	synth_result s;
 	CHECK(synth_doc(src, &s) == 0);
 	double *x = pcm_to_double(&s);
+	for (int i = 0; i < s.n; i++)
+		x[i] *= pow(10, gain_db / 20);
 	import_options o = { voice, s.sr, 0 };
 	kpe_doc d;
 	import_info info;
@@ -222,7 +232,7 @@ static void round_trip(const char *name, const kpe_doc *src, int voice)
 	double *e0 = malloc(sizeof(double) * nf), *ef[3], *eav = malloc(sizeof(double) * nf);
 	double *erd = malloc(sizeof(double) * nf), *eband = malloc(sizeof(double) * nf * 5);
 	double *tf0 = malloc(sizeof(double) * nf), dg0 = d.globals[KG_G0] - src->globals[KG_G0];
-	int ntf0 = 0, vowel_fric = 0;
+	int ntf0 = 0, vowel_fric = 0, fric_n = 0, fric_af = 0;
 	for (int i = 0; i < 3; i++)
 		ef[i] = malloc(sizeof(double) * nf);
 	int n0 = 0, nfm = 0, nav = 0, nrd = 0, nband = 0, vuv_ok = 0, vuv_n = 0;
@@ -251,11 +261,13 @@ static void round_trip(const char *name, const kpe_doc *src, int voice)
 			tf0[ntf0++] = a[KP_F0];
 			vowel_fric += b[KP_AF] > 0;
 			if (same_source && b[KP_AV] > 0) /* an unvoiced frame counts as a voicing error, not a level error */
-				eav[nav++] = fabs(b[KP_AV] - a[KP_AV]);
+				eav[nav++] = fabs(b[KP_AV] - (a[KP_AV] + gain_db)); /* amplitudes follow the WAV's level */
 			if (same_source)
 				erd[nrd++] = fabs(b[KP_RD] - a[KP_RD]);
 		}
 		if (tc == CLS_FRIC || tc == CLS_VOICED_FRIC) {
+			fric_n++;
+			fric_af += b[KP_AF] > 0;
 			double f[6] = { b[KP_F1], b[KP_F2], b[KP_F3], b[KP_F4], d.globals[KG_F5], d.globals[KG_F6] };
 			import_levels lw, ls;
 			long c = import_frame_centre(s.sr, 5, k);
@@ -296,10 +308,11 @@ static void round_trip(const char *name, const kpe_doc *src, int voice)
 		if (class_n[c])
 			printf(" %s %d/%d", (const char *[]){ "silence", "voiced", "voiced fric", "fric", "aspiration" }[c],
 				class_ok[c], class_n[c]);
-	printf("; steady vowel frames with frication %d; resynthesis peak %.1f dBFS\n", vowel_fric,
+	printf("; steady vowel frames with frication %d; steady fricative frames with AF %d/%d; resynthesis peak "
+		"%.1f dBFS\n", vowel_fric, fric_af, fric_n,
 		20 * log10(m_peak(sy.pcm, sy.n) / 32768 + 1e-12));
 	CHECK(n0 > 0 && f0m < LIM_F0_MEDIAN);
-	CHECK(vuv >= LIM_VUV);
+	CHECK(vuv >= (gain_db == 0 ? LIM_VUV : LIM_VUV_QUIET));
 	for (int i = 0; i < 3; i++) {
 		CHECK(nfm > 0 && fm[i] < LIM_F_MEDIAN);
 		CHECK(fp[i] < LIM_F_P90);
@@ -314,6 +327,7 @@ static void round_trip(const char *name, const kpe_doc *src, int voice)
 			CHECK(0);
 		}
 	CHECK(vowel_fric == 0);
+	CHECK(fric_af >= LIM_FRIC_AF * fric_n);
 	if (nband)
 		CHECK(bp <= LIM_BAND_DB);
 	free(e0);
@@ -331,6 +345,11 @@ static void round_trip(const char *name, const kpe_doc *src, int voice)
 	doc_free(&d);
 }
 
+static void round_trip(const char *name, const kpe_doc *src, int voice)
+{
+	round_trip_gain(name, src, voice, 0);
+}
+
 static void test_round_trips(void)
 {
 	kpe_doc d;
@@ -346,6 +365,7 @@ static void test_round_trips(void)
 	doc_free(&d);
 	fricative(&d, 0);
 	round_trip("/asa/", &d, VOICE_MALE);
+	round_trip_gain("/asa/ 48 dB quieter", &d, VOICE_MALE, QUIET_DB);
 	doc_free(&d);
 	fricative(&d, 50);
 	round_trip("/aza/", &d, VOICE_MALE);
