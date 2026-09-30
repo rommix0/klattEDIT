@@ -246,7 +246,7 @@ void KlattDestroy(klatt_h h);
 ### 5.5 Other windows
 
 - **View > Frame table:** a separate window with a virtual list: rows are frames, columns are `time_ms` and the
-  21 frame parameters. F2 or double-click edits a cell. The selected row and the main cursor follow each other.
+  23 frame parameters. F2 or double-click edits a cell. The selected row and the main cursor follow each other.
 - **Parameters > Globals…:** every global, each validated against its range. When FRAME_MS changes, the frames
   are resampled by linear interpolation so the duration stays the same, and a notice says so.
 - **Parameters > Optimize…:** see 5.6.
