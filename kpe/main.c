@@ -142,13 +142,27 @@ void app_set_cursor(int frame, int from_table)
 	InvalidateRect(app.plot, NULL, FALSE);
 }
 
+/* Stores path in app.path, resolved to an absolute path so a later Save still finds the file after the
+ * working directory changes (a relative path from argv[1], for instance). L"" (no document saved yet) is kept
+ * as is. */
+static void set_path(const wchar_t *path)
+{
+	if (!path[0]) {
+		app.path[0] = 0;
+		return;
+	}
+	if (!GetFullPathNameW(path, MAX_PATH, app.path, NULL)) {
+		wcsncpy(app.path, path, MAX_PATH - 1);
+		app.path[MAX_PATH - 1] = 0;
+	}
+}
+
 static void replace_doc(kpe_doc *d, const wchar_t *path)
 {
 	audio_stop();
 	doc_free(&app.doc);
 	app.doc = *d;
-	wcsncpy(app.path, path, MAX_PATH - 1);
-	app.path[MAX_PATH - 1] = 0;
+	set_path(path);
 	app.cursor = 0;
 	app.sel_a = -1;
 	app_changed(CHG_ALL);
@@ -165,26 +179,19 @@ static int ask_path(int save, const wchar_t *filter, const wchar_t *ext, wchar_t
 	of.lpstrFile = path;
 	of.nMaxFile = MAX_PATH;
 	of.lpstrDefExt = ext;
-	of.Flags = save ? OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST : OFN_FILEMUSTEXIST;
+	of.Flags = (save ? OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST : OFN_FILEMUSTEXIST) | OFN_NOCHANGEDIR;
 	return save ? GetSaveFileNameW(&of) : GetOpenFileNameW(&of);
 }
 
 static const wchar_t csv_filter[] = L"Klatt parameter files (*.csv)\0*.csv\0All files (*.*)\0*.*\0";
 
-static int save_as(void);
-
-static int save(void)
+/* Saves to path, showing any error or (on success) success-path warning; does not touch app.path. */
+static int save_to(const wchar_t *path, csv_report *r)
 {
-	if (!app.path[0])
-		return save_as();
-	csv_report r;
-	if (csv_save(app.path, &app.doc, &r) < 0) {
-		app_error(r.message);
+	if (csv_save(path, &app.doc, r) < 0) {
+		app_error(r->message);
 		return 0;
 	}
-	update_title();
-	if (r.message[0])
-		app_error(r.message);
 	return 1;
 }
 
@@ -194,8 +201,32 @@ static int save_as(void)
 	wcsncpy(path, app.path, MAX_PATH);
 	if (!ask_path(1, csv_filter, L"csv", path))
 		return 0;
-	wcscpy(app.path, path);
-	return save();
+	size_t len = wcslen(path);
+	if (len >= 12 && _wcsicmp(path + len - 12, L".globals.csv") == 0) {
+		app_error("Save to the frame file (name.csv), not its globals file (name.globals.csv).");
+		return 0;
+	}
+	csv_report r;
+	if (!save_to(path, &r))
+		return 0;
+	set_path(path); /* only after the save succeeds, so a failed Save As cannot repoint later Saves */
+	update_title();
+	if (r.message[0])
+		app_error(r.message);
+	return 1;
+}
+
+static int save(void)
+{
+	if (!app.path[0])
+		return save_as();
+	csv_report r;
+	if (!save_to(app.path, &r))
+		return 0;
+	update_title();
+	if (r.message[0])
+		app_error(r.message);
+	return 1;
 }
 
 /* Before discarding the document: 1 to go ahead, 0 to cancel. */
