@@ -18,6 +18,7 @@ void suite_view(void);
 void suite_golden(void);
 void suite_xarch(void);
 void suite_wavin(void);
+void suite_resample(void);
 
 static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "params", suite_params },
@@ -34,6 +35,7 @@ static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "golden", suite_golden },
 	{ "xarch", suite_xarch },
 	{ "wavin", suite_wavin },
+	{ "resample", suite_resample },
 };
 
 int main(void)
