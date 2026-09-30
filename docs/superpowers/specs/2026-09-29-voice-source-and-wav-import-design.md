@@ -68,14 +68,17 @@ Appended after the existing ones, so no existing index changes.
 - **At each pulse**, from the current F0 (T0 = 1/F0) and the latched Rd (clamped to 0.3-2.7):
   - Ra = (-1 + 4.8·Rd)/100, Rk = (22.4 + 11.8·Rd)/100, Rg = Rk·(0.5 + 1.2·Rk) / (0.44·Rd - 4·Ra·(0.5 + 1.2·Rk))
   - OQ = (1 + Rk)/(2·Rg), αm = 1/(1 + Rk), Ta = Ra·T0
-  - glottal formant: Fg = 1/(2·OQ·T0), Bg = 1/(OQ·T0·tan(π(1 - αm))); a two-pole filter at Fg, Bg with gain
-    1/sin(π(1 - αm)) and a zero at 0 Hz, so its impulse response is the LF glottal-flow *derivative*
+  - glottal formant: Fg = 1/(2·OQ·T0), Bg = 1/(OQ·T0·tan(π(1 - αm))); a two-pole filter at Fg, Bg whose impulse
+    response is the LF glottal flow (fextr adds a zero at 0 Hz to get the flow derivative; here the radiation
+    difference of 3.5 does that)
   - tilt: a one-pole low-pass with pole exp(-2π·Fa/SR), Fa = 1/(2π·Ta), unity gain at 0 Hz
   - Degenerate values (a non-finite result, or a near-zero denominator) skip the pulse, as fextr does.
-- **Level:** each pulse is scaled so that its energy (the filters' impulse response over one period) is the same for
-  every Rd and F0, times a calibration constant `K_LF` chosen so that a steady neutral vowel at AV = 60, F0 = 100 Hz,
-  Rd = 1 has the same RMS as the 1980 source at default globals (within 0.5 dB). Output level then depends on F0 the
-  same way for both sources (one pulse per period).
+- **Level:** each pulse is scaled so that a neutral vowel (the default cascade: F1-F5 = 500/1500/2500/3500/3750 Hz,
+  B1-B5 = 50/70/110/250/200 Hz) gets the same power for every Rd: the power of the radiated pulse train through
+  that tract, summed over the harmonics below SR/2, is set to F0/SR, one unit of energy per period. A calibration
+  constant `K_LF` then makes a steady neutral vowel at AV = 60, F0 = 100 Hz, Rd = 1 match the 1980 source's RMS at
+  default globals (within 0.5 dB). Output level depends on F0 the same way for both sources. (Equal energy per pulse
+  was tried first and let the vowel's loudness swing by about ±6 dB across Rd.)
 - **Noise modulation** follows the open phase: noise is halved while the glottal phase is at or beyond OQ (the 1980
   source keeps the half-period rule).
 - **AVS** with SRC = 1 feeds the LF source's output through RGS, as the 1980 source feeds RGP's output.
@@ -84,16 +87,20 @@ Appended after the existing ones, so no existing index changes.
 
 ### 3.3 Rd with the 1980 source (SRC = 0)
 
-Rd approximates the LF source's change of spectral tilt by scaling the glottal resonator's bandwidth:
+Rd approximates the LF source's change of spectral tilt on the 1980 source:
 
 - At each pulse, with the current F0 and the latched Rd, compute L(Rd) = 20·log10|H(f_hi)| - 20·log10|H(F0)|, where
   H is the LF source's frequency response from 3.2 (glottal formant times tilt, at that F0) and
   f_hi = min(3000 Hz, 0.45·SR). Then Δ = L(Rd) - L(1) in dB.
-- RGP uses the bandwidth BGP·10^(Δ/40) for that pulse (a two-pole low-pass changes its level far above the corner by
-  40 dB per decade of bandwidth), clamped to 10 Hz-0.45·SR. FGP, FGZ, BGZ and RGS are unchanged.
-- At Rd = 1, Δ is exactly 0 and the factor exactly 1, so the default gives the 1980 source bit for bit. Rd below 1
-  brightens the source (pressed), above 1 darkens it (breathy), and an Rd fitted by the import means roughly the
-  same in either mode.
+- **Brighter (Δ > 0, Rd < 1):** RGP widens to the bandwidth, between BGP and 0.45·SR and found by bisection, at which
+  RGP's own level at f_hi relative to F0 is Δ higher than at BGP.
+- **Darker (Δ < 0, Rd > 1):** at the default BGP of 100 Hz both F0 and f_hi already lie on RGP's -12 dB/octave slope,
+  so narrowing RGP cannot darken it further (found while prototyping: within 2 dB of its limit). Instead a one-pole
+  low-pass (unity gain at 0 Hz) on the AV voicing gives the change; its pole solves |T(f_hi)|²/|T(F0)|² = 10^(Δ/10)
+  in closed form (a quadratic), capped at 0.999 when more is asked than one pole can give.
+- At Rd = 1, Δ is exactly 0: RGP keeps BGP and the low-pass is off, so the default gives the 1980 source bit for bit.
+  Rd below 1 brightens the source (pressed), above 1 darkens it (breathy), and an Rd fitted by the import means
+  roughly the same in either mode. FGP, FGZ, BGZ and RGS are unchanged.
 - Like the LF source's other settings, this changes only at pulses (the paper updates the voicing-source filters
   pitch-synchronously).
 
@@ -113,10 +120,9 @@ Rd approximates the LF source's change of spectral tilt by scaling the glottal r
 - **No noise low-pass, radiation on the voicing source:** the paper's noise low-pass y(n) = x(n) + y(n - 1) exists
   only to cancel the output's radiation difference, and the paper notes both can be removed from the noise path.
   A literal integrator would drift, and AF changes would turn the drift into thumps. So: noise enters the branches
-  white, and the radiation first difference moves from the output to the voicing sources:
-  - SRC = 0: the first difference of RGP/RGZ's output (and of RGS's, for AVS).
-  - SRC = 1: the LF filters with their zero at 0 Hz, which is the flow derivative, i.e. the same thing.
-  - The output stage keeps G0, rounding and saturation, without a difference.
+  white, and the radiation first difference moves from the output to the voicing: either source computes glottal
+  flow, scaled by AV (and through RGS by AVS), and the first difference of that sum enters the branches. The output
+  stage keeps G0, rounding and saturation, without a difference.
   The parallel branch still gives R2-R6, RNP and AB the first difference of the voicing (paper p. 982) and gives
   frication to R2-R6 and AB undifferenced. Every path therefore keeps the same overall filtering as before; only the
   noise's spectrum (now truly white after radiation) and the place where the difference is taken change.
@@ -129,9 +135,12 @@ Rd approximates the LF source's change of spectral tilt by scaling the glottal r
 
 ### 3.6 Editor support
 
-- Left panel: a new group "Voice" with Rd and DI. The Globals dialog lists SRC and FL like any other global (it is
-  generated from the DLL's table).
-- Painting, the line tool and cell edits round Rd to 0.01 and everything else to whole units.
+- Left panel: a new group "Voice" with Rd and DI, whose strips come right after AVS's. The two extra rows would push
+  the globals off a default-size window, so the panel gets a vertical scrollbar that appears when its content is
+  taller than the window. The panel's globals text adds SRC. The Globals dialog lists SRC and FL like any other
+  global (it is generated from the DLL's table).
+- Painting and the line tool round Rd to 0.01 and everything else to whole units (cell edits keep the typed value,
+  as before). The status bar shows the pointer's value at the same step.
 - Optimize gains two tolerances: Rd (default 0.05) and % (default 2 %, for DI).
 - The frame table, CSV files and Parameter reference pick up the new parameters from the DLL's table. A saved frame
   file has all 23 columns.
@@ -139,24 +148,26 @@ Rd approximates the LF source's change of spectral tilt by scaling the glottal r
 
 ### 3.7 Tests (automated, both architectures)
 
-- **LF shape:** at F0 = 100 Hz and Rd = 0.5, 1 and 2.5, the source spectrum (SW = 1, AB only, corrected for the AB
-  path's first difference) rises below Fg and falls above it, steeper above Fa, with Fg and Fa within 10 % of the
-  formulas; a larger Rd gives a steeper high-frequency roll-off.
+- **LF shape:** at F0 = 100 Hz and Rd = 0.5, 1 and 2.5, harmonics 2-30 of the source (SW = 1, AB only, corrected for
+  that path's two first differences) match the formulas' |H| relative to H1 within 1 dB, wherever the formula puts
+  them within 60 dB of H1 (quieter ones sink into the 16-bit rounding); a larger Rd rolls off more.
 - **LF level:** at fixed AV, the output RMS stays within ±1 dB as Rd sweeps 0.3-2.7 (F0 = 100 and 200 Hz); the LF and
   1980 sources match within 0.5 dB at the calibration point.
-- **1980 tilt:** with SRC = 0, Rd = 1 is bit-identical to the source without Rd; at F0 = 100 and 200 Hz the level near
-  f_hi relative to H1 falls monotonically as Rd rises, and its change from Rd = 1 is within 4 dB of the LF source's
+- **1980 tilt:** with SRC = 0, at F0 = 100 and 200 Hz the level near f_hi relative to H1 falls monotonically as Rd
+  rises, and its change from Rd = 1 is within 4 dB of the LF source's
   change for Rd 0.5-2.5.
 - **Timing:** SRC = 1 keeps the pitch accuracy of the existing F0 tests (fractional periods, no rounding to whole
   samples).
-- **FL:** FL = 0 is bit-identical to no flutter; FL = 100 gives a measured F0 track within 10 % of the formula's
-  excursion.
-- **DI:** DI = 0 is bit-identical to no diplophonia; DI = 50 gives alternating pulse amplitudes with ratio 0.5 ± 0.05
-  and the delayed pulses shifted by the formula's delay ± 1 sample.
-- **Noise:** the spectrum of AF-only frication through AB is flat within 3 dB from 100 Hz to 0.45·SR; an AF step
+- **FL:** FL = 100 moves F0 by several Hz, and F0 measured over four periods at a time follows the formula within
+  10 % of its excursion.
+- **DI:** DI = 50 gives alternating pulse amplitudes with ratio 0.5 ± 0.05 and the delayed pulses shifted by the
+  formula's delay ± 1.5 samples.
+- **Noise:** the spectrum of AF-only frication through AB is flat within 3 dB from 30 Hz to 0.45·SR (the old noise was
+  about 11 dB down at 50 Hz); an AF step
   from 60 to 70 dB ramps linearly across the frame; an AF jump of more than 50 dB lands at the frame start.
 - The existing suites stay green with updated expectations; 32- and 64-bit output still agree (0 LSB is the current
-  result; the requirement stays 1 LSB).
+  result; the requirement stays 1 LSB), now also over a stretch using the LF source, flutter, diplophonia and an Rd
+  glide.
 
 ## 4. Part B: WAV import
 
