@@ -234,7 +234,8 @@ void dlg_paramref(HWND owner)
 
 /* ---- Optimize ---- */
 
-static int previewed; /* an Optimize step from Preview is on the undo stack */
+static int previewed;   /* an Optimize step from Preview is on the undo stack */
+static int saved_dirty; /* app.doc.dirty before the first Preview of this dialog session */
 
 static void clear_ghosts(void)
 {
@@ -242,6 +243,22 @@ static void clear_ghosts(void)
 		free(app.ghost[p]);
 		app.ghost[p] = NULL;
 	}
+}
+
+/* Undoes a previewed Optimize step, if any, and drops it from the redo stack so it cannot come back through
+ * Redo. Returns 1 on success (or if there was nothing to undo), 0 on out of memory, in which case previewed
+ * stays set and the caller must leave the preview applied. */
+static int discard_preview(void)
+{
+	if (!previewed)
+		return 1;
+	if (doc_undo(&app.doc) < 0) {
+		app_error("Out of memory.");
+		return 0;
+	}
+	doc_redo_discard(&app.doc);
+	previewed = 0;
+	return 1;
 }
 
 static double tolerance_for(int p, double hz, double f0, double db)
@@ -254,7 +271,7 @@ static double tolerance_for(int p, double hz, double f0, double db)
 }
 
 /* Undoes an earlier preview, then optimizes the checked tracks as one undo step. Returns 1, or 0 if a field
- * is invalid. */
+ * is invalid or discarding the earlier preview ran out of memory (the dialog stays open either way). */
 static int run_optimize(HWND dlg)
 {
 	double hz, f0, db;
@@ -264,10 +281,8 @@ static int run_optimize(HWND dlg)
 		return reject(dlg, IDC_TOL_F0, L"Enter a tolerance of 0 or more.");
 	if (!get_number(dlg, IDC_TOL_DB, &db) || db < 0)
 		return reject(dlg, IDC_TOL_DB, L"Enter a tolerance of 0 or more.");
-	if (previewed) {
-		doc_undo(&app.doc);
-		previewed = 0;
-	}
+	if (!discard_preview())
+		return 0;
 	clear_ghosts();
 	HWND tracks = GetDlgItem(dlg, IDC_TRACKS), grid_box = GetDlgItem(dlg, IDC_GRID);
 	int grid = (int)SendMessageW(grid_box, CB_GETITEMDATA, SendMessageW(grid_box, CB_GETCURSEL, 0, 0), 0);
@@ -345,6 +360,7 @@ static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 		set_number(dlg, IDC_TOL_F0, 2);
 		set_number(dlg, IDC_TOL_DB, 1);
 		previewed = 0;
+		saved_dirty = app.doc.dirty;
 		return TRUE;
 	}
 	case WM_COMMAND:
@@ -360,12 +376,12 @@ static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 			}
 			return TRUE;
 		case IDCANCEL:
-			if (previewed)
-				doc_undo(&app.doc);
-			previewed = 0;
-			clear_ghosts();
-			app_changed(CHG_VALUES);
-			EndDialog(dlg, 0);
+			if (discard_preview()) {
+				app.doc.dirty = saved_dirty;
+				clear_ghosts();
+				app_changed(CHG_VALUES);
+				EndDialog(dlg, 0);
+			}
 			return TRUE;
 		}
 		break;

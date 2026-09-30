@@ -41,7 +41,8 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 - [ ] Changing FRAME_MS from 5 to 10 keeps the duration, halves the frame count, and shows a notice that the
       frames were resampled and the duration stays about the same.
 - [ ] Parameters > Optimize...: Preview shows the original tracks faintly and a summary per track; Apply keeps
-      the result as one undo step; Cancel restores the original.
+      the result as one undo step; Cancel restores the original. (Accepted limitation: recording the preview
+      step clears any redo history that existed before Preview was first pressed in this dialog session.)
 - [ ] Help > Parameter reference lists all 21 frame parameters and 18 globals.
 
 ## Files

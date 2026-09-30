@@ -302,6 +302,24 @@ static void test_redo_after_frame_ms_resample(void)
 	doc_free(&d);
 }
 
+static void test_redo_discard(void)
+{
+	kpe_doc d;
+	new_doc(&d, 50);
+	CHECK(doc_redo_discard(&d) == 1); /* nothing to discard */
+	doc_set(&d, 0, KP_AV, 60);
+	doc_set(&d, 1, KP_AV, 40);
+	CHECK(doc_undo(&d) == 0);
+	CHECK(doc_can_redo(&d));
+	CHECK(doc_redo_discard(&d) == 0);
+	CHECK(!doc_can_redo(&d));
+	CHECK_NEAR(doc_get(&d, 1, KP_AV), 0, 0); /* unchanged: still undone */
+	CHECK(doc_can_undo(&d));
+	CHECK(doc_undo(&d) == 0); /* a further undo still works */
+	CHECK_NEAR(doc_get(&d, 0, KP_AV), 0, 0);
+	doc_free(&d);
+}
+
 void suite_model(void)
 {
 	test_new_document();
@@ -319,4 +337,5 @@ void suite_model(void)
 	test_globals_without_resample();
 	test_frame_ms_change_resamples();
 	test_redo_after_frame_ms_resample();
+	test_redo_discard();
 }

@@ -488,3 +488,12 @@ int doc_redo(kpe_doc *d)
 		step_free(s);
 	return 0;
 }
+
+int doc_redo_discard(kpe_doc *d)
+{
+	if (d->nredo == 0)
+		return 1;
+	d->nredo--;
+	step_free(d->redo[d->nredo]);
+	return 0;
+}

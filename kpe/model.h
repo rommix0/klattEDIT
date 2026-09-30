@@ -67,6 +67,8 @@ const char *doc_redo_label(const kpe_doc *d);
  * unchanged), 1 when there was nothing to undo/redo. */
 int doc_undo(kpe_doc *d);
 int doc_redo(kpe_doc *d);
+/* Drops the top redo step (freeing it) without applying it. Returns 0, or 1 if there is none. */
+int doc_redo_discard(kpe_doc *d);
 
 #ifdef KPE_TESTING
 /* Test-only fault injection: the nth malloc performed by model.c from this call onward returns NULL, as if out
