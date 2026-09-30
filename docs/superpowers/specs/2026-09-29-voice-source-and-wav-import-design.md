@@ -75,7 +75,8 @@ Appended after the existing ones, so no existing index changes.
   - Degenerate values (a non-finite result, or a near-zero denominator) skip the pulse, as fextr does.
 - **Level:** each pulse is scaled so that a neutral vowel (the default cascade: F1-F5 = 500/1500/2500/3500/3750 Hz,
   B1-B5 = 50/70/110/250/200 Hz) gets the same power for every Rd: the power of the radiated pulse train through
-  that tract, summed over the harmonics below SR/2, is set to F0/SR, one unit of energy per period. A calibration
+  that tract, summed over the harmonics below SR/2 (evaluated at max(F0, 1 Hz), so very low F0 values cannot make
+  the sum unbounded), is set to F0/SR, one unit of energy per period. A calibration
   constant `K_LF` then makes a steady neutral vowel at AV = 60, F0 = 100 Hz, Rd = 1 match the 1980 source's RMS at
   default globals (within 0.5 dB). Output level depends on F0 the same way for both sources. (Equal energy per pulse
   was tried first and let the vowel's loudness swing by about ±6 dB across Rd.)
@@ -98,6 +99,9 @@ Rd approximates the LF source's change of spectral tilt on the 1980 source:
   so narrowing RGP cannot darken it further (found while prototyping: within 2 dB of its limit). Instead a one-pole
   low-pass (unity gain at 0 Hz) on the AV voicing gives the change; its pole solves |T(f_hi)|²/|T(F0)|² = 10^(Δ/10)
   in closed form (a quadratic), capped at 0.999 when more is asked than one pole can give.
+- **Level:** the pulse is scaled so that the neutral vowel keeps the power it has at Rd = 1 (the same harmonic sum
+  as the LF source's level, 3.2, over the 1980 chain with the widened RGP or the low-pass); at Rd = 1 the scale is
+  exactly 1. Without it, brightening raised the vowel by up to 34 dB (found in the final review).
 - At Rd = 1, Δ is exactly 0: RGP keeps BGP and the low-pass is off, so the default gives the 1980 source bit for bit.
   Rd below 1 brightens the source (pressed), above 1 darkens it (breathy), and an Rd fitted by the import means
   roughly the same in either mode. FGP, FGZ, BGZ and RGS are unchanged.
@@ -155,7 +159,7 @@ Rd approximates the LF source's change of spectral tilt on the 1980 source:
   1980 sources match within 0.5 dB at the calibration point.
 - **1980 tilt:** with SRC = 0, at F0 = 100 and 200 Hz the level near f_hi relative to H1 falls monotonically as Rd
   rises, and its change from Rd = 1 is within 4 dB of the LF source's
-  change for Rd 0.5-2.5.
+  change for Rd 0.5-2.5; the neutral vowel's RMS stays within ±1.5 dB of Rd = 1 for Rd 0.3-2.7.
 - **Timing:** SRC = 1 keeps the pitch accuracy of the existing F0 tests (fractional periods, no rounding to whole
   samples).
 - **FL:** FL = 100 moves F0 by several Hz, and F0 measured over four periods at a time follows the formula within

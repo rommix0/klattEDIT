@@ -80,15 +80,20 @@ a packed record reads `min`/`max`/`def` from the wrong offset on 32-bit.
 - **Pulses:** an impulse each time the glottal phase (which advances by F0/SR per sample) wraps past 1. F0 is read
   every sample, so a change takes effect within the current period; AV, AVS, Rd and DI are latched at each pulse.
   **FL** (flutter, a global) adds (FL/50)·(F0/100)·[sin 2π·12.7t + sin 2π·7.1t + sin 2π·4.7t] Hz to F0, t in
-  seconds since create or reset (Klatt & Klatt 1990, Eq. 1). **DI** (diplophonia) delays every second pulse by
-  DI% of the closed phase and weakens it by DI%, so at 100 % it vanishes (Klatt & Klatt 1990, p. 840).
+  seconds since create or reset (Klatt & Klatt 1990, Eq. 1), and the result is clamped to F0's range (0-500 Hz).
+  **DI** (diplophonia) delays every second pulse by DI% of the closed phase and weakens it by DI%, so at 100 % it
+  vanishes (Klatt & Klatt 1990, p. 840).
 - **Voicing, SRC = 0 (Klatt 1980, the default):** the pulses go through the glottal resonator RGP (FGP, BGP), then
   the glottal antiresonator RGZ (FGZ, BGZ) scaled by AV, and RGS (0 Hz, BGS) scaled by AVS. **Rd** tilts this
   source by as much as it tilts the LF source (level near 3 kHz relative to F0, from Rd = 1): below 1 RGP widens,
-  above 1 a one-pole low-pass darkens the AV voicing, and at 1 nothing changes.
+  above 1 a one-pole low-pass darkens the AV voicing, and at 1 nothing changes. Away from 1 the pulse is scaled so
+  that the neutral vowel keeps the level it has at Rd = 1 (the same harmonic sum as the LF source's level).
 - **Voicing, SRC = 1 (LF):** at each pulse Rd sets Ra, Rk and Rg (Fant 1997) and from them a two-pole glottal
   formant and a one-pole tilt low-pass (Perrotin et al. 2021). The pulse is sized so that a neutral vowel gets the
   same power for every Rd, and `K_LF` matches it to the 1980 source's level. AV scales it, and RGS gives AVS.
+  The normalization targets the vowel band, not the low band RGS passes, so AVS's level changes with Rd (at
+  F0 = 100 Hz about -10 dB at Rd 0.3 and +7 dB at 2.7, against Rd = 1). `K_LF` is calibrated on the cascade vowel:
+  with SW = 1 the LF source is about 5 dB quieter than the 1980 source.
 - **Radiation:** the voicing is computed as glottal flow and its first difference is taken here, before the
   branches, instead of at the output.
 - **Noise:** the sum of 16 uniform random numbers (paper p. 977), white, halved in the closed phase of each voiced

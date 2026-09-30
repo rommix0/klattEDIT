@@ -84,14 +84,15 @@ describe the 1980 source as it still is.
   (FGP, BGP) and the glottal antiresonator RGZ (FGZ, BGZ), scaled by AV. Quasi-sinusoidal voicing: the same
   pulses through RGS (bandwidth BGS), scaled by AVS. F0 is read every frame (the glottal phase advances by
   F0/SR per sample); AV and AVS are latched at each glottal pulse.
-- **Noise source:** a seeded pseudo-random generator, low-pass filtered. While voicing is on, the noise is
-  amplitude-modulated over each pitch period as the paper describes. AH scales it for aspiration, AF for frication.
+- **Noise source:** a seeded pseudo-random generator: the sum of 16 uniform numbers, white. While voicing is on,
+  the noise is halved from the open quotient on in each pitch period (0.5 for the 1980 source). AH scales it for
+  aspiration, AF for frication; both ramp across each frame.
 - **Cascade branch** (voicing + aspiration): nasal pole RNP (FNP, BNP), nasal zero RNZ (FNZ, BNZ), then formant
   resonators R1 to R`NFC` (NFC 4-6).
 - **Parallel branch** (frication; also voicing when SW = 1): A1-A6 through R1-R6 with alternating signs, AN
   through the nasal pole, AB as a bypass.
-- **Output:** first difference (lip radiation), gain G0, rounding to 16-bit with saturation. Saturated samples
-  are counted, not hidden.
+- **Output:** gain G0, rounding to 16-bit with saturation. Saturated samples are counted, not hidden. The first
+  difference (lip radiation) is taken on the voicing, before the branches (DLL 1.1).
 - **Resonator:** `y[n] = A·x[n] + B·y[n-1] + C·y[n-2]` with `C = -exp(-2πBW·T)`,
   `B = 2·exp(-πBW·T)·cos(2πF·T)`, `A = 1 - B - C`. Antiresonator: the inverse filter. Coefficients are updated at
   each frame; the voicing-source filters follow the paper's pitch-synchronous update.
