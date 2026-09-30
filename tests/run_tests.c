@@ -21,6 +21,7 @@ void suite_wavin(void);
 void suite_resample(void);
 void suite_lpc(void);
 void suite_pitch(void);
+void suite_track(void);
 
 static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "params", suite_params },
@@ -40,6 +41,7 @@ static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "resample", suite_resample },
 	{ "lpc", suite_lpc },
 	{ "pitch", suite_pitch },
+	{ "track", suite_track },
 };
 
 int main(void)
