@@ -38,7 +38,7 @@ Date: 2026-09-28. Status: approved in brainstorming, pending written-spec review
 
 ## 3. Repository layout
 
-`C:\Users\abart\Desktop\IPOX\kpe_open`, its own git repository.
+`C:\Users\abart\Desktop\KPE\kpe_open`, its own git repository.
 
 ```
 kpe_open/
@@ -75,6 +75,11 @@ Everything marked "no Win32" is portable C that the test runner links directly.
 
 ### 4.1 Signal path (Klatt 1980)
 
+Version 1.1 of the DLL changed this section: see `2026-09-29-voice-source-and-wav-import-design.md`, section 3, for
+the selectable LF source (SRC, Rd), Rd's tilt on the 1980 source, flutter (FL), diplophonia (DI), the 16-sum white
+noise with AF/AH ramps, and the radiation difference taken on the voicing instead of the output. The bullets below
+describe the 1980 source as it still is.
+
 - **Voicing source:** an impulse train at F0, started pitch-synchronously, through the glottal resonator RGP
   (FGP, BGP) and the glottal antiresonator RGZ (FGZ, BGZ), scaled by AV. Quasi-sinusoidal voicing: the same
   pulses through RGS (bandwidth BGS), scaled by AVS. F0 is read every frame (the glottal phase advances by
@@ -98,8 +103,8 @@ Everything marked "no Win32" is portable C that the test runner links directly.
 
 ### 4.2 Parameters
 
-Per-frame parameters (21) and globals (18), following Table I of the paper. The paper's SR and NWS become `SR`
-and `FRAME_MS`.
+Per-frame parameters (23) and globals (20): Table I of the paper, plus Rd and DI (frame) and SRC and FL (global)
+added in DLL 1.1. The paper's SR and NWS become `SR` and `FRAME_MS`.
 
 - **Min/max** are this design's hard limits, somewhat wider than the paper's typical ranges so that, for example,
   high F1 values can be drawn. The DLL clamps to them, and also clamps frequencies below SR/2. The editor's default
@@ -145,9 +150,13 @@ and `FRAME_MS`.
 | global | FRAME_MS | frame length | ms | 1 | 20 | 5 |
 | global | G0 | overall gain | dB | 0 | 80 | 47 |
 | global | NFC | number of cascade formants | - | 4 | 6 | 5 |
+| frame | Rd | voice quality: pressed to breathy (step 0.01) | - | 0.3 | 2.7 | 1 |
+| frame | DI | diplophonia | % | 0 | 100 | 0 |
+| global | SRC | voicing source: 0 = Klatt 1980, 1 = LF | - | 0 | 1 | 0 |
+| global | FL | flutter | % | 0 | 100 | 0 |
 
-The frame parameter order is AV AF AH AVS F0 F1 F2 F3 F4 FNZ AN A1 A2 A3 A4 A5 A6 AB B1 B2 B3 (indices 0-20).
-The global order is as listed (indices 0-17).
+The frame parameter order is AV AF AH AVS F0 F1 F2 F3 F4 FNZ AN A1 A2 A3 A4 A5 A6 AB B1 B2 B3 Rd DI (indices
+0-22). The global order is as listed, SW to NFC, then SRC and FL (indices 0-19).
 
 ### 4.3 Frame timing
 
@@ -172,7 +181,7 @@ typedef struct {
 } klatt_param_info;
 
 int         KlattVersion(void);
-int         KlattParamCount(int kind);                          /* 21 or 18 */
+int         KlattParamCount(int kind);                          /* 23 or 20 (1.0: 21 or 18) */
 int         KlattParamInfo(int kind, int index, klatt_param_info *out);
 int         KlattParamIndex(int kind, const char *name);        /* case-insensitive; negative if unknown */
 const char *KlattErrorText(int code);
@@ -195,8 +204,9 @@ void KlattDestroy(klatt_h h);
 ### 5.1 Main window
 
 - **Menu bar:** File, Edit, Sound, Parameters, View, Help.
-- **Left panel:** a checkbox per parameter, grouped (Source: F0, AV, AF, AH, AVS; Cascade: F1-F4 on the
-  spectrogram, B1-B3; Parallel: A1-A6, AB; Nasal: FNZ, AN), then the globals as read-only text.
+- **Left panel:** a checkbox per parameter, grouped (Source: F0, AV, AF, AH, AVS; Voice: Rd, DI; Cascade: F1-F4
+  on the spectrogram, B1-B3; Parallel: A1-A6, AB; Nasal: FNZ, AN), then the globals as read-only text. The panel
+  scrolls vertically when it is taller than the window.
 - **Strips:** one strip per ticked parameter, stacked, each with its own Y axis showing units and automatically
   chosen ticks, and horizontal grid lines at the ticks.
 - **Spectrogram strip:** the spectrogram of the current synthesis with the ticked F1-F4 tracks drawn over it.
@@ -249,7 +259,7 @@ void KlattDestroy(klatt_h h);
 
 - **Dialog:** tracks to optimize (checklist, defaulting to the visible strips), range (selection or whole file),
   grid (every frame, 5 ms or 10 ms; grids that are not a multiple of FRAME_MS are disabled), and a tolerance per
-  unit: 20 Hz for formants and bandwidths, 2 Hz for F0, 1 dB for amplitudes.
+  unit: 20 Hz for formants and bandwidths, 2 Hz for F0, 1 dB for amplitudes, 0.05 for Rd, 2 % for DI.
 - **Algorithm:** Douglas-Peucker restricted to grid times. It keeps the fewest breakpoints for which linear
   interpolation stays within the tolerance of the original values, always keeps the range's endpoints, and then
   refills the frames between breakpoints by linear interpolation. Steps larger than the tolerance (such as
@@ -271,7 +281,7 @@ void KlattDestroy(klatt_h h);
   - If both are present and FRAME_MS disagrees with the `time_ms` spacing, the file is rejected with an error
     naming both values.
 - **Saving** writes both files, each to a temporary file first and then renamed over the target. The frame file
-  always has all 21 columns in table order.
+  always has all 23 columns in table order.
 - **Prompts:** unsaved changes prompt before New, Open and Exit.
 
 ## 6. Error handling
@@ -306,6 +316,8 @@ void KlattDestroy(klatt_h h);
 - **Edge cases:** all amplitudes 0 give exact silence; the same seed gives identical output; frame lengths add up
   to the exact duration; clamping and argument errors.
 - **Cross-architecture:** 32- and 64-bit output for the same input agree within 1 LSB.
+- **Voice source (DLL 1.1):** the LF source's harmonics against its formulas, its level across Rd, Rd's tilt on the
+  1980 source, flutter, diplophonia, white noise and the AF/AH ramps (`tests/test_synth_source.c`).
 - **Editor logic** (`model.c`, `csvio.c`, `optimize.c`): CSV round trip (load, save, load gives identical data);
   every rejection case; optimizer tolerance, grid alignment and endpoints; each edit operation and undo/redo.
 

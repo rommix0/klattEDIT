@@ -1,14 +1,15 @@
 # kpe_open
 
 A clean-room, 32-bit Windows successor to the IPOX Klatt Parameter Editor (1995), and a Klatt 1980 formant
-synthesizer DLL (32- and 64-bit) that other programs can use. Nothing here is derived from the original IPOX
-binaries.
+synthesizer DLL (32- and 64-bit) that other programs can use, with an optional LF voicing source and the flutter
+and diplophonia controls of Klatt & Klatt (1990). Nothing here is derived from the original IPOX binaries.
 
 - `klatt/`: the synthesizer DLL. See `docs/klatt-dll.md`.
 - `kpe/`: the editor. Its core (document and undo, CSV files, optimization, synthesis, WAV, spectrogram) has no
   user interface and is covered by the tests; the Win32 GUI is built on top of it.
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
-- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`.
+- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, and for the voice source and WAV import
+  `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`.
 
 ## Building
 

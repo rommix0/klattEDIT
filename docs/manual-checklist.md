@@ -13,6 +13,10 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 - [ ] View > Narrowband shows harmonics as horizontal lines; turning it off shows vertical glottal pulses.
 - [ ] View > Frequency range... changes the top of the spectrogram strip.
 - [ ] Ctrl+wheel zooms around the pointer; the wheel and the scrollbar pan; Ctrl+0 fits the whole file.
+- [ ] Ticking Rd and DI (group "Voice") adds their strips right after AVS; the Rd axis shows 1 and 2 and the
+      status bar shows the pointer's Rd with two decimals.
+- [ ] At the default window size the left panel shows a scrollbar; the wheel over the panel and the scrollbar
+      reach the last global line (F6). Enlarging the window until everything fits hides the scrollbar.
 
 ## Editing
 
@@ -33,6 +37,9 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 - [ ] The status bar reports an overload when AV is raised to 80 dB.
 - [ ] Listening: `samples/ba.csv` sounds like "ba"; a steady AV = 60 vowel with the default formants sounds like
       a neutral "uh".
+- [ ] Listening, voice source: with Globals SRC = 1, `ba.csv` still sounds like "ba" at about the same loudness;
+      painting Rd from 0.5 to 2.5 moves the voice from pressed to breathy in both SRC = 0 and SRC = 1; FL = 50 adds
+      a slow natural wobble; DI = 50 over the last 200 ms gives a rough, creaky ending.
 - [ ] Once the listening checks are approved (and after any intended change to the synthesizer), run
       `make golden` and commit `tests/golden/` so later changes to the sound are caught by the tests.
 
@@ -45,7 +52,8 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
       the result as one undo step; Cancel restores the original. (Accepted limitation: recording the preview
       step clears any redo history that existed before Preview was first pressed in this dialog session.)
 - [ ] Optimize > Preview > Cancel leaves the title without * and Redo disabled.
-- [ ] Help > Parameter reference lists all 21 frame parameters and 18 globals.
+- [ ] Parameters > Optimize... has Rd and DI (%) tolerances (0.05 and 2).
+- [ ] Help > Parameter reference lists all 23 frame parameters and 20 globals.
 
 ## Files
 
