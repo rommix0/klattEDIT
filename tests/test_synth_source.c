@@ -9,8 +9,123 @@
 #define SR 11025.0
 #define PI 3.14159265358979323846
 #define SKIP 1102 /* the first 100 ms of every steady sound */
+#define WHOLE 9702 /* 22 * 441 samples: a whole number of periods at 100 and 200 Hz */
 
 static short buf[80000], ref[80000];
+
+/* The LF flow filters' magnitude at f (spec 3.2), written independently of klatt.c. */
+static double lf_mag(double f0, double rd, double f)
+{
+	double t0 = 1 / f0, ra = (-1 + 4.8 * rd) / 100, rk = (22.4 + 11.8 * rd) / 100;
+	double rg = rk * (0.5 + 1.2 * rk) / (0.44 * rd - 4 * ra * (0.5 + 1.2 * rk));
+	double oq = (1 + rk) / (2 * rg), am = 1 / (1 + rk);
+	double fg = 1 / (2 * oq * t0), bg = 1 / (oq * t0 * tan(PI * (1 - am))), fa = 1 / (2 * PI * ra * t0);
+	double r = exp(-PI * bg / SR), a1 = -2 * r * cos(2 * PI * fg / SR), a2 = r * r, p = exp(-2 * PI * fa / SR);
+	double w = 2 * PI * f / SR;
+	double re = 1 + a1 * cos(w) + a2 * cos(2 * w), im = -(a1 * sin(w) + a2 * sin(2 * w));
+	double tr = 1 - p * cos(w), ti = p * sin(w);
+	return (1 - p) / sqrt((re * re + im * im) * (tr * tr + ti * ti));
+}
+
+/* nframes of voicing through the AB bypass only (SW = 1): the output is the source's second difference. */
+static int source_only(int src, double f0, double rd, double bgp, double di, double fl, int nframes, short *out)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	t_default_globals(g);
+	t_default_frame(f);
+	g[KG_SW] = 1;
+	g[KG_SRC] = src;
+	g[KG_BGP] = bgp;
+	g[KG_FL] = fl;
+	g[KG_G0] = bgp > 1000 ? 0 : 20; /* the second difference is loud, more so with a wide RGP: stay inside 16 bits */
+	f[KP_AV] = 60;
+	f[KP_AB] = 60;
+	f[KP_F0] = f0;
+	f[KP_RD] = rd;
+	f[KP_DI] = di;
+	return t_synth_steady(g, f, nframes, out, 80000);
+}
+
+/* Harmonic k's level in dB over WHOLE samples after SKIP, with the AB path's two first differences divided out. */
+static double harmonic_db(const short *x, double f0, int k)
+{
+	double w = 2 * PI * k * f0 / SR, d = 2 * sin(w / 2);
+	return 10 * log10(m_power_at(x + SKIP, WHOLE, SR, k * f0)) - 20 * log10(d * d);
+}
+
+static void test_lf_harmonics_follow_the_formula(void)
+{
+	static const double rds[] = { 0.5, 1.0, 2.5 };
+	double hf[3];
+	for (int i = 0; i < 3; i++) {
+		source_only(1, 100, rds[i], 100, 0, 0, 200, buf);
+		double h1 = harmonic_db(buf, 100, 1), worst = 0;
+		for (int k = 2; k <= 30; k++) {
+			double got = harmonic_db(buf, 100, k) - h1;
+			double want = 20 * log10(lf_mag(100, rds[i], k * 100) / lf_mag(100, rds[i], 100));
+			if (want > -60) /* quieter harmonics sink into the 16-bit rounding */
+				worst = fmax(worst, fabs(got - want));
+		}
+		CHECK(worst < 1.0);
+		hf[i] = harmonic_db(buf, 100, 30) - h1;
+	}
+	CHECK(hf[0] > hf[1] && hf[1] > hf[2]); /* a larger Rd rolls off more */
+}
+
+static double vowel_rms(int src, double f0, double rd)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	t_default_globals(g);
+	t_default_frame(f);
+	g[KG_SRC] = src;
+	f[KP_AV] = 60;
+	f[KP_F0] = f0;
+	f[KP_RD] = rd;
+	t_synth_steady(g, f, 200, buf, 80000);
+	return m_rms(buf + SKIP, WHOLE);
+}
+
+static void test_lf_level(void)
+{
+	static const double rds[] = { 0.3, 0.6, 1.5, 2.0, 2.7 };
+	for (int j = 0; j < 2; j++) {
+		double f0 = j ? 200 : 100, r1 = vowel_rms(1, f0, 1.0);
+		for (int i = 0; i < 5; i++)
+			CHECK_NEAR(20 * log10(vowel_rms(1, f0, rds[i]) / r1), 0, 1.0);
+	}
+	CHECK_NEAR(20 * log10(vowel_rms(1, 100, 1.0) / vowel_rms(0, 100, 1.0)), 0, 0.5); /* calibration */
+}
+
+/* Level of the harmonic nearest 3 kHz relative to H1, from the source through AB. */
+static double tilt_db(int src, double f0, double rd)
+{
+	source_only(src, f0, rd, 100, 0, 0, 200, buf);
+	int k = (int)lround(3000 / f0);
+	return harmonic_db(buf, f0, k) - harmonic_db(buf, f0, 1);
+}
+
+static void test_rd_tilts_the_1980_source(void)
+{
+	static const double rds[] = { 0.5, 1.0, 1.5, 2.0, 2.5 };
+	for (int j = 0; j < 2; j++) {
+		double f0 = j ? 200 : 100, t80[5], tlf[5];
+		for (int i = 0; i < 5; i++) {
+			t80[i] = tilt_db(0, f0, rds[i]);
+			tlf[i] = tilt_db(1, f0, rds[i]);
+		}
+		for (int i = 0; i < 4; i++)
+			CHECK(t80[i + 1] < t80[i]);
+		for (int i = 0; i < 5; i++)
+			CHECK_NEAR(t80[i] - t80[1], tlf[i] - tlf[1], 4.0);
+	}
+}
+
+static void test_lf_pitch_is_not_rounded(void)
+{
+	/* 361.475 Hz is a period of 30.5 samples: rounding periods to whole samples would be 1.7 % off. */
+	int n = source_only(1, 361.475, 1.0, 100, 0, 0, 200, buf);
+	CHECK_NEAR(m_f0(buf + SKIP, n - SKIP, SR, 200, 450), 361.475, 0.005 * 361.475);
+}
 
 static void test_noise_is_white(void)
 {
@@ -53,8 +168,8 @@ static void af_run(const double *af, int nframes, short *out)
 	KlattDestroy(h);
 }
 
-/* The largest error of a/b against a ramp from lo to hi over samples [from, from + len), counting only samples
- * where |b| is large enough for the rounding to 16 bits not to matter. */
+/* The largest error of a/b against want(i) over samples [from, from + len) where |b| is large enough for the
+ * rounding to 16 bits not to matter. */
 static double ratio_error(const short *a, const short *b, int from, int len, double lo, double hi)
 {
 	double worst = 0;
@@ -91,6 +206,10 @@ static void test_af_ramps_and_jumps(void)
 
 void suite_synth_source(void)
 {
+	test_lf_harmonics_follow_the_formula();
+	test_lf_level();
+	test_rd_tilts_the_1980_source();
+	test_lf_pitch_is_not_rounded();
 	test_noise_is_white();
 	test_af_ramps_and_jumps();
 }
