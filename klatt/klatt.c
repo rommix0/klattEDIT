@@ -1,6 +1,6 @@
 /* klatt.c - Klatt (1980) cascade/parallel formant synthesizer, implemented from the paper's equations and
- * block diagram (D.H. Klatt, JASA 67, 971-995), with the 1.1 extension of an LF voicing source driven by Rd
- * (Fant 1997; Perrotin et al. 2021).
+ * block diagram (D.H. Klatt, JASA 67, 971-995), with the 1.1 extensions: an LF voicing source driven by Rd
+ * (Fant 1997; Perrotin et al. 2021), flutter and diplophonia (Klatt & Klatt 1990, JASA 87, 820-857).
  * See docs/klatt-dll.md for the signal path and calibration. */
 #include <math.h>
 #include <stdint.h>
@@ -36,14 +36,17 @@ struct klatt_synth {
 	int nfc, parallel_only, lf;
 	double out_gain;
 	double frame;               /* frames synthesized since the last reset */
+	double nsamp;               /* samples synthesized since the last reset, for flutter */
 	uint32_t rng;
 	int overload;
 
 	/* voicing source; phase is the glottal phase in periods, wrapped to [0,1) while voiced, and pinned
-	 * at 1.0 while unvoiced so voicing starts with a pulse at once; av/avs/rd latch at each pulse */
+	 * at 1.0 while unvoiced so voicing starts with a pulse at once; av/avs/rd/di latch at each pulse */
 	double phase;
-	double av, avs, rd, av_next, avs_next, rd_next, f0_next;
+	double av, avs, rd, di, av_next, avs_next, rd_next, di_next, f0_next;
 	double oq;                  /* open quotient of the current period: the LF value, or 0.5 */
+	int pulses;                 /* pulses since voicing started, for diplophonia's alternation */
+	double pending_at, pending_amp; /* a delayed (diplophonic) pulse: the phase it fires at, or -1 */
 	reson rgp, rgs;
 	antireson rgz;
 	lf_shape lfs;
@@ -211,13 +214,17 @@ KLATT_API void KLATT_CALL KlattReset(klatt_h s, unsigned seed)
 {
 	if (!s)
 		return;
-	s->frame = 0.0;
+	s->frame = s->nsamp = 0.0;
 	s->rng = seed;
 	s->overload = 0;
 	s->phase = 1.0;
 	s->av = s->avs = s->av_next = s->avs_next = s->f0_next = 0.0;
 	s->rd = s->rd_next = 1.0;
+	s->di = s->di_next = 0.0;
 	s->oq = 0.5;
+	s->pulses = 0;
+	s->pending_at = -1.0;
+	s->pending_amp = 0.0;
 	s->gy1 = s->gy2 = s->tz1 = s->lf_amp = s->v_prev = s->tp80 = s->ty80 = 0.0;
 	s->lfs = (lf_shape){ 0.0, 0.0, 0.0, 0.5 };
 	s->ah0 = s->ah1 = s->af0 = s->af1 = s->af_db = 0.0;
@@ -270,6 +277,7 @@ static void load_frame(struct klatt_synth *s, const double *in)
 	s->av_next = db_to_lin(p[KP_AV]);
 	s->avs_next = db_to_lin(p[KP_AVS]);
 	s->rd_next = p[KP_RD];
+	s->di_next = p[KP_DI];
 	s->f0_next = p[KP_F0];
 
 	/* AF and AH ramp linearly across the frame (paper p. 978), except that an AF rise of more than
@@ -289,12 +297,13 @@ static void load_frame(struct klatt_synth *s, const double *in)
 }
 
 /* Starts a glottal period at f0: latches the per-pulse values and sets the source filters for the period.
- * Returns the size of the pulse to issue (0 when the LF values are degenerate). */
+ * Returns the size of the pulse to issue now; a diplophonic pulse is instead scheduled for later. */
 static double start_period(struct klatt_synth *s, double f0)
 {
 	s->av = s->av_next;
 	s->avs = s->avs_next;
 	s->rd = s->rd_next;
+	s->di = s->di_next;
 	double amp = 1.0;
 	if (s->lf) {
 		if (lf_setup(s->sr, f0, s->rd, &s->lfs)) {
@@ -329,6 +338,14 @@ static double start_period(struct klatt_synth *s, double f0)
 		reson_set(&s->rgp, fgp, bw, s->sr);
 		s->oq = 0.5;
 	}
+	/* Diplophonia (Klatt & Klatt 1990, p. 840): every second pulse is delayed by DI% of the closed phase
+	 * and attenuated by DI%, so at 100 % it closes as the next pulse opens (and vanishes). */
+	s->pulses++;
+	if (s->di > 0.0 && s->pulses % 2 == 0) {
+		s->pending_at = s->di / 100.0 * (1.0 - s->oq);
+		s->pending_amp = amp * (1.0 - s->di / 100.0);
+		return 0.0;
+	}
 	return amp;
 }
 
@@ -336,19 +353,39 @@ static double start_period(struct klatt_synth *s, double f0)
 static double sample(struct klatt_synth *s, double frac)
 {
 	/* Voicing: an impulse each time the glottal phase wraps past 1, F0 read fresh every sample so a
-	 * change takes effect within the current period instead of waiting for it to finish. */
+	 * change takes effect within the current period instead of waiting for it to finish. Flutter
+	 * (Klatt & Klatt 1990, Eq. 1) wobbles F0 by three slow sinusoids. */
+	double f0 = s->f0_next;
+	if (f0 > 0.0 && s->g[KG_FL] > 0.0) {
+		double t = s->nsamp / s->sr;
+		f0 += s->g[KG_FL] / 50.0 * f0 / 100.0 *
+		      (sin(2.0 * KLATT_PI * 12.7 * t) + sin(2.0 * KLATT_PI * 7.1 * t) + sin(2.0 * KLATT_PI * 4.7 * t));
+		f0 = klatt_clamp(KLATT_FRAME, KP_F0, f0);
+	}
+	s->nsamp += 1.0;
+
 	double pulse = 0.0;
 	int voiced = s->f0_next > 0.0;
 	if (voiced) {
-		s->phase += s->f0_next / s->sr;
+		s->phase += f0 / s->sr;
 		if (s->phase >= 1.0) {
 			s->phase -= 1.0;
-			pulse = start_period(s, s->f0_next);
+			if (s->pending_at >= 0.0) { /* a delayed pulse that the new period overtook fires now */
+				pulse += s->pending_amp;
+				s->pending_at = -1.0;
+			}
+			pulse += start_period(s, f0 > 0.0 ? f0 : s->f0_next);
+		}
+		if (s->pending_at >= 0.0 && s->phase >= s->pending_at) {
+			pulse += s->pending_amp;
+			s->pending_at = -1.0;
 		}
 	} else {
 		s->phase = 1.0;
 		s->av = s->av_next;
 		s->avs = s->avs_next;
+		s->pulses = 0;
+		s->pending_at = -1.0;
 	}
 
 	/* The voicing source as glottal flow, then its first difference (lip radiation, moved here from the

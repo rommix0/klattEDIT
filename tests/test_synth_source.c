@@ -127,6 +127,74 @@ static void test_lf_pitch_is_not_rounded(void)
 	CHECK_NEAR(m_f0(buf + SKIP, n - SKIP, SR, 200, 450), 361.475, 0.005 * 361.475);
 }
 
+/* Finds pulses as the largest |sample| of each cluster above thresh (clusters are at least 20 samples apart).
+ * The source must be short-lived (a wide RGP). Returns the count. */
+static int find_pulses(const short *x, int n, double thresh, int *pos, double *amp, int max)
+{
+	int np = 0;
+	for (int i = 1; i < n - 1; i++) {
+		double a = fabs((double)x[i]);
+		if (a < thresh)
+			continue;
+		if (np && i - pos[np - 1] < 20) {
+			if (a > amp[np - 1]) {
+				pos[np - 1] = i;
+				amp[np - 1] = a;
+			}
+		} else if (np < max) {
+			pos[np] = i;
+			amp[np++] = a;
+		}
+	}
+	return np;
+}
+
+/* Flutter's F0 over four periods at a time (the phase accumulator makes that exact to a sample) against the
+ * formula's average over the same stretch. */
+static void test_flutter(void)
+{
+	static int pos[400];
+	static double amp[400];
+	int n = source_only(0, 100, 1.0, 2000, 0, 100, 400, buf); /* 2 s */
+	double pk = m_peak(buf, n);
+	int np = find_pulses(buf, n, 0.3 * pk, pos, amp, 400);
+	CHECK(np > 150);
+	double lo = 1e9, hi = -1e9, worst = 0;
+	for (int i = 1; i + 4 < np; i += 4) {
+		double got = 4 * SR / (pos[i + 4] - pos[i]), want = 0;
+		for (int j = pos[i]; j < pos[i + 4]; j++) {
+			double t = j / SR;
+			want += 100 + 2 * (sin(2 * PI * 12.7 * t) + sin(2 * PI * 7.1 * t) + sin(2 * PI * 4.7 * t));
+		}
+		want /= pos[i + 4] - pos[i];
+		lo = fmin(lo, want);
+		hi = fmax(hi, want);
+		worst = fmax(worst, fabs(got - want));
+	}
+	CHECK(hi - lo > 4);              /* flutter moves F0 by several Hz */
+	CHECK(worst < 0.10 * (hi - lo)); /* and the pulses follow the formula */
+}
+
+static void test_diplophonia(void)
+{
+	static int pos[64];
+	static double amp[64];
+	int n = source_only(0, 100, 1.0, 2000, 50, 0, 200, buf);
+	int np = find_pulses(buf, n, 0.2 * m_peak(buf, n), pos, amp, 64);
+	double t0 = SR / 100, delay = 0.5 * (1 - 0.5) * t0; /* DI = 50 %, open quotient 0.5 */
+	CHECK(np > 20);
+	int ok_ratio = 1, ok_gap = 1;
+	for (int i = 2; i + 1 < np; i += 2) { /* pulses 1, 3, ... (0-based) are the delayed ones */
+		double r = amp[i + 1] / amp[i];
+		if (fabs(r - 0.5) > 0.05)
+			ok_ratio = 0;
+		if (fabs(pos[i + 1] - pos[i] - (t0 + delay)) > 1.5)
+			ok_gap = 0;
+	}
+	CHECK(ok_ratio);
+	CHECK(ok_gap);
+}
+
 static void test_noise_is_white(void)
 {
 	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
@@ -210,6 +278,8 @@ void suite_synth_source(void)
 	test_lf_level();
 	test_rd_tilts_the_1980_source();
 	test_lf_pitch_is_not_rounded();
+	test_flutter();
+	test_diplophonia();
 	test_noise_is_white();
 	test_af_ramps_and_jumps();
 }
