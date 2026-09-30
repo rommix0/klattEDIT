@@ -58,7 +58,7 @@ static void create_fields(HWND dlg, const double *g, int with_duration)
 		MapWindowPoints(NULL, dlg, (POINT *)&dur, 2);
 		area.top = dur.top;
 	}
-	RECT du = { 0, 0, 4, 14 }; /* a row is 14 dialog units high; 4 du is the gap between columns */
+	RECT du = { 0, 0, 4, 13 }; /* a row is 13 dialog units high; 4 du is the gap between columns */
 	MapDialogRect(dlg, &du);
 	int row_h = du.bottom, pad = du.right, row_w = area.right - area.left;
 	int name_w = row_w * 12 / 100, desc_w = row_w * 50 / 100, range_w = row_w * 20 / 100;
