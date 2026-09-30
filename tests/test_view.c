@@ -27,8 +27,9 @@ static void test_layout_formant_minimum(void)
 	for (int p = 0; p < NP; p++)
 		vis[p] = 1;
 	int n = view_layout(vis, 0, 300, 50, 4, s);
-	CHECK(n == 18); /* 17 parameter strips + the formant strip */
-	CHECK(s[5].param == FORMANT_STRIP && s[5].height == 100);
+	CHECK(n == 20); /* 19 parameter strips + the formant strip */
+	CHECK(s[5].param == KP_RD && s[6].param == KP_DI); /* the voice strips follow the source strips */
+	CHECK(s[7].param == FORMANT_STRIP && s[7].height == 100);
 }
 
 static void test_nice_step(void)

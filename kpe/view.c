@@ -2,7 +2,7 @@
 #include <math.h>
 #include "view.h"
 
-static const int before[] = { KP_F0, KP_AV, KP_AF, KP_AH, KP_AVS };
+static const int before[] = { KP_F0, KP_AV, KP_AF, KP_AH, KP_AVS, KP_RD, KP_DI };
 static const int after[] = { KP_B1, KP_B2, KP_B3, KP_FNZ, KP_AN, KP_A1, KP_A2, KP_A3, KP_A4, KP_A5, KP_A6, KP_AB };
 
 int view_layout(const int *visible, int top, int height, int unit, int gap, strip_rect *out)

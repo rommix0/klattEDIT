@@ -48,14 +48,27 @@ static double clamp_param(int kind, int index, double v)
 	return v > pi.max ? pi.max : v;
 }
 
-/* Clamps a global to its range; SR, NFC and SW are whole numbers, so they are then rounded to the nearest
+/* Clamps a global to its range; SR, NFC, SW and SRC are whole numbers, so they are then rounded to the nearest
  * integer (half away from zero). */
 static double clamp_global(int index, double v)
 {
 	v = clamp_param(KLATT_GLOBAL, index, v);
-	if (index == KG_SR || index == KG_NFC || index == KG_SW)
+	if (index == KG_SR || index == KG_NFC || index == KG_SW || index == KG_SRC)
 		v = round(v);
 	return v;
+}
+
+double doc_param_step(int param)
+{
+	return param == KP_RD ? 0.01 : 1.0;
+}
+
+/* Rounds v to the parameter's step (half away from zero). Scaling by the step's inverse, a whole number, and
+ * dividing back gives the double nearest the decimal value (1.23, not 1.2300000000000002). */
+static double round_to_step(int param, double v)
+{
+	double per_unit = round(1.0 / doc_param_step(param));
+	return round(v * per_unit) / per_unit;
 }
 
 static void step_free(undo_step *s)
@@ -264,7 +277,7 @@ void doc_paint(kpe_doc *d, int param, double t0_ms, double v0, double t1_ms, dou
 	for (int k = k0; k <= k1; k++) {
 		double t = fmin(fmax(k * fm, tlo), thi);
 		double v = t1_ms == t0_ms ? v1 : v0 + (v1 - v0) * (t - t0_ms) / (t1_ms - t0_ms);
-		set_cell(d, k, param, round(v));
+		set_cell(d, k, param, round_to_step(param, v));
 	}
 	if (own)
 		doc_end(d);

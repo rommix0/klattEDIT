@@ -37,6 +37,8 @@ void doc_free(kpe_doc *d);
 double doc_frame_ms(const kpe_doc *d);
 double doc_duration_ms(const kpe_doc *d);
 double doc_get(const kpe_doc *d, int frame, int param);
+/* The step painted values are rounded to: 0.01 for Rd, 1 (whole units) for every other frame parameter. */
+double doc_param_step(int param);
 
 /* Value edits happen inside a transaction; each transaction becomes one undo step (none if nothing changed). */
 void doc_begin(kpe_doc *d, const char *label);
@@ -46,7 +48,7 @@ int doc_end(kpe_doc *d);
 /* Sets one value, clamped to the parameter's range. Outside a transaction it is its own undo step. */
 void doc_set(kpe_doc *d, int frame, int param, double v);
 /* Sets the frames between t0_ms and t1_ms (either order) by linear interpolation from v0 to v1, rounded to
- * whole units. Frame k sits at k * FRAME_MS. Used for paint strokes and the line tool. */
+ * doc_param_step. Frame k sits at k * FRAME_MS. Used for paint strokes and the line tool. */
 void doc_paint(kpe_doc *d, int param, double t0_ms, double v0, double t1_ms, double v1);
 
 /* Structural edits; each is one undo step. Return 0, or -1 on bad arguments (including a transaction still
@@ -54,7 +56,7 @@ void doc_paint(kpe_doc *d, int param, double t0_ms, double v0, double t1_ms, dou
 int doc_insert_frames(kpe_doc *d, int at, int count, const double *data); /* data NULL: copies of frame at (or the last) */
 int doc_delete_frames(kpe_doc *d, int first, int count);                  /* at least one frame always remains */
 int doc_copy_frames(const kpe_doc *d, int first, int count, double *out); /* no undo step */
-/* Replaces the globals (clamped, and SR/NFC/SW rounded to the nearest integer since they are whole numbers).
+/* Replaces the globals (clamped, and SR/NFC/SW/SRC rounded to the nearest integer since they are whole numbers).
  * If FRAME_MS changes, the frames are resampled by linear interpolation so the duration stays the same.
  * Returns 1 if resampled, 0 if not, -1 on bad arguments (a transaction still open) or out of memory. */
 int doc_set_globals(kpe_doc *d, const double *globals);

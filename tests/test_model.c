@@ -174,6 +174,21 @@ static void test_paint_interpolates_and_rounds(void)
 	doc_free(&d);
 }
 
+static void test_paint_rounds_rd_to_hundredths(void)
+{
+	kpe_doc d;
+	new_doc(&d, 100);
+	CHECK_NEAR(doc_param_step(KP_RD), 0.01, 0);
+	CHECK_NEAR(doc_param_step(KP_F1), 1, 0);
+	doc_paint(&d, KP_RD, 10, 1.234, 30, 1.234); /* frames 2..6 */
+	CHECK(doc_get(&d, 2, KP_RD) == 1.23); /* exactly the double 1.23, so the CSV says 1.23 */
+	CHECK(doc_get(&d, 6, KP_RD) == 1.23);
+	doc_paint(&d, KP_RD, 50, 2.3456, 50, 2.3456); /* frame 10 */
+	CHECK(doc_get(&d, 10, KP_RD) == 2.35);
+	CHECK(doc_get(&d, 7, KP_RD) == 1.0); /* untouched: the default */
+	doc_free(&d);
+}
+
 static void test_insert_delete_copy(void)
 {
 	kpe_doc d;
@@ -244,9 +259,11 @@ static void test_globals_without_resample(void)
 	memcpy(g, d.globals, sizeof g);
 	g[KG_G0] = 60;
 	g[KG_SR] = 999999; /* clamped to 20000 */
+	g[KG_SRC] = 0.7;   /* a whole number: rounded to 1 */
 	CHECK(doc_set_globals(&d, g) == 0);
 	CHECK_NEAR(d.globals[KG_G0], 60, 0);
 	CHECK_NEAR(d.globals[KG_SR], 20000, 0);
+	CHECK_NEAR(d.globals[KG_SRC], 1, 0);
 	CHECK(d.nframes == 20);
 	CHECK(doc_undo(&d) == 0);
 	CHECK_NEAR(d.globals[KG_G0], 47, 0);
@@ -332,6 +349,7 @@ void suite_model(void)
 	test_structural_edit_rejected_during_transaction();
 	test_new_edit_clears_redo();
 	test_paint_interpolates_and_rounds();
+	test_paint_rounds_rd_to_hundredths();
 	test_insert_delete_copy();
 	test_undo_oom_leaves_document_unchanged();
 	test_globals_without_resample();

@@ -50,6 +50,8 @@
 #define IDC_TOL_DB        2107
 #define IDC_PREVIEW       2108
 #define IDC_SUMMARY       2109
+#define IDC_TOL_RD        2110
+#define IDC_TOL_PCT       2111
 #define IDC_LIST          2201
 #define IDC_ASK_LABEL     2301
 #define IDC_ASK_VALUE     2302

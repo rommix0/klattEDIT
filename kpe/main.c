@@ -65,7 +65,7 @@ static void update_title(void)
 /* The panel lists the globals that matter most while editing; Parameters > Globals shows them all. */
 static void update_globals_text(void)
 {
-	static const int shown[] = { KG_SR, KG_FRAME_MS, KG_NFC, KG_SW, KG_G0, KG_F5, KG_F6 };
+	static const int shown[] = { KG_SR, KG_FRAME_MS, KG_SRC, KG_NFC, KG_SW, KG_G0, KG_F5, KG_F6 };
 	wchar_t t[512];
 	int len = swprintf(t, 512, L"Globals\r\n");
 	for (unsigned i = 0; i < sizeof shown / sizeof shown[0]; i++) {
@@ -531,14 +531,69 @@ static void init_menu(HMENU m)
 
 static const struct { const char *title; int params[7]; } groups[] = {
 	{ "Source", { KP_F0, KP_AV, KP_AF, KP_AH, KP_AVS, -1 } },
+	{ "Voice", { KP_RD, KP_DI, -1 } },
 	{ "Formants (on spectrogram)", { KP_F1, KP_F2, KP_F3, KP_F4, -1 } },
 	{ "Bandwidths", { KP_B1, KP_B2, KP_B3, -1 } },
 	{ "Parallel", { KP_A1, KP_A2, KP_A3, KP_A4, KP_A5, KP_A6, KP_AB } },
 	{ "Nasal", { KP_FNZ, KP_AN, -1 } },
 };
 
+static int panel_content_h, panel_pos; /* the panel's content height and vertical scroll position, in pixels */
+
+/* Scrolls the panel's children so that content row pos is at the top (clamped), and updates the scrollbar,
+ * which Windows hides while everything fits. */
+static void panel_scroll_to(HWND h, int pos)
+{
+	RECT rc = { 0 };
+	GetClientRect(h, &rc);
+	if (pos > panel_content_h - rc.bottom)
+		pos = panel_content_h - rc.bottom;
+	if (pos < 0)
+		pos = 0;
+	if (pos != panel_pos) {
+		ScrollWindowEx(h, 0, panel_pos - pos, NULL, NULL, NULL, NULL, SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
+		panel_pos = pos;
+	}
+	SCROLLINFO si = { sizeof si, SIF_RANGE | SIF_PAGE | SIF_POS, 0, panel_content_h - 1, (UINT)rc.bottom, panel_pos, 0 };
+	SetScrollInfo(h, SB_VERT, &si, TRUE);
+}
+
+static void panel_vscroll(HWND h, int code)
+{
+	RECT rc = { 0 };
+	GetClientRect(h, &rc);
+	int pos = panel_pos;
+	switch (code) {
+	case SB_LINEUP: pos -= S(19); break;
+	case SB_LINEDOWN: pos += S(19); break;
+	case SB_PAGEUP: pos -= rc.bottom; break;
+	case SB_PAGEDOWN: pos += rc.bottom; break;
+	case SB_TOP: pos = 0; break;
+	case SB_BOTTOM: pos = panel_content_h; break;
+	case SB_THUMBTRACK:
+	case SB_THUMBPOSITION: {
+		SCROLLINFO si = { sizeof si, SIF_TRACKPOS, 0, 0, 0, 0, 0 };
+		GetScrollInfo(h, SB_VERT, &si);
+		pos = si.nTrackPos;
+		break;
+	}
+	}
+	panel_scroll_to(h, pos);
+}
+
 static LRESULT CALLBACK panel_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
+	switch (msg) {
+	case WM_SIZE:
+		panel_scroll_to(h, panel_pos);
+		return 0;
+	case WM_VSCROLL:
+		panel_vscroll(h, LOWORD(wp));
+		return 0;
+	case WM_MOUSEWHEEL:
+		panel_scroll_to(h, panel_pos - GET_WHEEL_DELTA_WPARAM(wp) * 3 * S(19) / WHEEL_DELTA);
+		return 0;
+	}
 	if (msg == WM_COMMAND && HIWORD(wp) == BN_CLICKED && LOWORD(wp) >= IDC_CHECK_BASE &&
 	    LOWORD(wp) < IDC_CHECK_BASE + NP) {
 		int p = LOWORD(wp) - IDC_CHECK_BASE;
@@ -566,8 +621,8 @@ static HWND child(const wchar_t *cls, const wchar_t *text, DWORD style, int x, i
 
 static void create_panel(void)
 {
-	app.panel = CreateWindowExW(0, L"KpePanel", L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, 0, 0, 0, 0,
-	                            app.main, NULL, app.inst, NULL);
+	app.panel = CreateWindowExW(0, L"KpePanel", L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_VSCROLL, 0, 0, 0,
+	                            0, app.main, NULL, app.inst, NULL);
 	int y = S(6), x = S(8), w = S(150);
 	for (unsigned g = 0; g < sizeof groups / sizeof groups[0]; g++) {
 		wchar_t t[64];
@@ -587,6 +642,7 @@ static void create_panel(void)
 		y += S(4);
 	}
 	globals_text = child(L"STATIC", L"", SS_LEFT | SS_NOPREFIX, x, y + S(4), w, S(18) * 9, app.panel, 2);
+	panel_content_h = y + S(4) + S(18) * 9 + S(6);
 }
 
 /* ---- main window ---- */
@@ -598,7 +654,7 @@ static void layout(void)
 	SendMessageW(app.status, WM_SIZE, 0, 0);
 	RECT sr = { 0 };
 	GetWindowRect(app.status, &sr);
-	int sh = sr.bottom - sr.top, pw = S(170);
+	int sh = sr.bottom - sr.top, pw = S(170) + GetSystemMetrics(SM_CXVSCROLL); /* room for the panel's scrollbar */
 	int parts[3] = { rc.right - S(560), rc.right - S(340), -1 };
 	SendMessageW(app.status, SB_SETPARTS, 3, (LPARAM)parts);
 	MoveWindow(app.panel, 0, 0, pw, rc.bottom - sh, TRUE);

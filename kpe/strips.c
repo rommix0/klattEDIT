@@ -68,6 +68,7 @@ static COLORREF track_color(int p)
 	case KP_AF: return RGB(20, 140, 100);
 	case KP_AH: return RGB(120, 100, 210);
 	case KP_AVS: return RGB(160, 80, 160);
+	case KP_RD: case KP_DI: return RGB(190, 120, 20);
 	case KP_F1: case KP_F2: case KP_F3: case KP_F4: return RGB(216, 90, 48);
 	default: return RGB(90, 90, 90);
 	}
@@ -237,7 +238,10 @@ static void draw_strip(HDC dc, const strip_rect *s, HFONT vfont)
 	klatt_param_info pi = { "Frequency", "Hz", "", 0, 0, 0 };
 	if (s->param != FORMANT_STRIP)
 		KlattParamInfo(KLATT_FRAME, s->param, &pi);
-	swprintf(t, 64, L"%hs (%hs)", pi.name, pi.unit);
+	if (strcmp(pi.unit, "-") == 0)
+		swprintf(t, 64, L"%hs", pi.name); /* unitless (Rd) */
+	else
+		swprintf(t, 64, L"%hs (%hs)", pi.name, pi.unit);
 	HFONT of = SelectObject(dc, vfont);
 	SetTextColor(dc, RGB(60, 60, 60));
 	text_at(dc, S(4), s->top + s->height / 2, TA_CENTER | TA_TOP, t);
@@ -452,8 +456,10 @@ static void hover(int x, int y)
 		} else {
 			klatt_param_info pi;
 			KlattParamInfo(KLATT_FRAME, s->param, &pi);
+			double step = doc_param_step(s->param);
 			len += swprintf(t + len, 256 - len, L" \x00B7 %hs %g %hs \x00B7 pointer %g", pi.name,
-			                doc_get(&app.doc, k, s->param), pi.unit, round(vm_v(y, lo, hi, s->top, s->height)));
+			                doc_get(&app.doc, k, s->param), pi.unit,
+			                round(vm_v(y, lo, hi, s->top, s->height) / step) * step);
 		}
 	}
 	app_status(t);
