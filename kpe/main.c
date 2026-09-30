@@ -479,7 +479,6 @@ static void command(int id)
 		app.sel_b = app.doc.nframes - 1;
 		app_set_cursor(0, 0);
 		break;
-	case IDM_SYNTH: app_changed(CHG_VALUES); break;
 	case IDM_PLAY: play(0); break;
 	case IDM_PLAYSEL: play(1); break;
 	case IDM_GLOBALS: cmd_globals(); break;

@@ -194,7 +194,7 @@ void KlattDestroy(klatt_h h);
 
 ### 5.1 Main window
 
-- **Menu bar:** File, Edit, Synthesis, Sound, Parameters, View, Help.
+- **Menu bar:** File, Edit, Sound, Parameters, View, Help.
 - **Left panel:** a checkbox per parameter, grouped (Source: F0, AV, AF, AH, AVS; Cascade: F1-F4 on the
   spectrogram, B1-B3; Parallel: A1-A6, AB; Nasal: FNZ, AN), then the globals as read-only text.
 - **Strips:** one strip per ticked parameter, stacked, each with its own Y axis showing units and automatically
@@ -220,7 +220,7 @@ void KlattDestroy(klatt_h h);
 ### 5.3 Synthesis and sound
 
 - After every completed edit (mouse release, cell commit, dialog OK), the document is synthesized again through
-  `klatt32.dll` and the spectrogram is recomputed. Synthesis > Synthesize (F5) forces it.
+  `klatt32.dll` and the spectrogram is recomputed, so there is no separate Synthesize command.
 - The status bar reports an overload if any samples saturated.
 - **Sound:** Space plays or stops; Shift+Space plays the selection. A playhead line moves across the strips.
   Playback uses `waveOut`.
