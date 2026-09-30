@@ -20,6 +20,7 @@ void suite_xarch(void);
 void suite_wavin(void);
 void suite_resample(void);
 void suite_lpc(void);
+void suite_pitch(void);
 
 static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "params", suite_params },
@@ -38,6 +39,7 @@ static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "wavin", suite_wavin },
 	{ "resample", suite_resample },
 	{ "lpc", suite_lpc },
+	{ "pitch", suite_pitch },
 };
 
 int main(void)
