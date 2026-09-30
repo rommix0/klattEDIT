@@ -19,6 +19,10 @@ typedef struct {
 int spectro_compute(const short *pcm, int n, double sr, double window_ms, double step_ms, kpe_spectro *out);
 void spectro_free(kpe_spectro *s);
 
+/* In-place iterative radix-2 FFT; n is a power of two. tw_re/tw_im[j] hold cos/sin(-2*pi*j/n) for j in
+ * [0, n/2), precomputed once by the caller instead of recomputed in every butterfly. */
+void spectro_fft(double *re, double *im, int n, const double *tw_re, const double *tw_im);
+
 #define SPECTRO_FLOOR_DB 20.0 /* below the power of a 1-LSB signal: cells under it are silence */
 
 /* Darkness per cell: 255 at the loudest cell, falling linearly to 0 at range_db below it. Cells below

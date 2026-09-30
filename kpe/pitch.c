@@ -18,14 +18,21 @@
                               * voiced by YIN at 43 dB down) */
 #define PITCH_JUMP_COST 1.0  /* DP cost per octave of F0 change between neighbouring frames: an octave jump
                               * must be backed by a clearly deeper dip in several frames */
-#define PITCH_HOLD 0.4       /* hysteresis: a frame next to a voiced one stays voiced while its aperiodicity is below
-                              * this (the threshold starts voicing; transitions, e.g. into diplophonia, reach 0.25) */
+#define PITCH_HOLD 0.45      /* hysteresis: a frame next to a voiced one stays voiced while its aperiodicity is below
+                              * this (the threshold starts voicing). Tuned on the import's round trips: fast formant
+                              * transitions after a burst or into a fricative read 0.3-0.44; aspiration 0.45 and up
+                              * unfiltered, down to 0.24 low-passed (so aspiration never starts voicing) */
 #define PITCH_GATE_MS 10.0   /* the window whose energy PITCH_FLOOR_DB applies to */
+#define PITCH_LOWPASS_HZ 1500.0 /* pitch_track low-passes the signal first, as the YIN paper recommends (its
+                                 * section on low-pass prefiltering): frication above it would otherwise hide the
+                                 * voicing of a voiced fricative (a /z/ with AV 50 under AF 58 read aperiodicity
+                                 * 0.6-0.8 unfiltered); at 1000 Hz aspiration through F1 alone looked periodic */
+#define PITCH_LOWPASS_MS 4.0 /* half-length of that FIR (Hann-windowed sinc): a transition about 500 Hz wide */
 #define PITCH_MEDIAN 5       /* frames in the median that smooths each voiced run's F0 */
 
 #define MAX_LAG 1024         /* longest lag: sr / fmin = 20000 / 60 = 334 fits */
 #define INTERP_HALF 8        /* windowed-sinc taps each side for the difference at a fractional lag */
-#define REFINE_MAX 8         /* dips (the deepest at whole lags) evaluated at their fractional lag */
+#define REFINE_MAX 5         /* dips (the deepest at whole lags) evaluated at their fractional lag */
 
 /* The difference function at the fractional lag tau over w samples of buf (which has INTERP_HALF samples of
  * margin before index 0 and after w + tau): x[j + tau] comes from a Hann-windowed sinc interpolation. Evaluating
@@ -215,16 +222,39 @@ static int best_path(const pitch_frame *pf, int a, int b, double fmax, double *f
 	return 0;
 }
 
+/* Zero-phase FIR low-pass of x into y (n samples; beyond the ends counts as zero). */
+static void lowpass(const double *x, long n, int sr, double *y)
+{
+	int h = (int)lround(PITCH_LOWPASS_MS * sr / 1000);
+	double fc = PITCH_LOWPASS_HZ / sr, tap[1024];
+	if (h > 511)
+		h = 511;
+	for (int m = -h; m <= h; m++) {
+		double s = m == 0 ? 2 * fc : sin(2 * PI * fc * m) / (PI * m);
+		tap[m + h] = s * (0.5 + 0.5 * cos(PI * m / (h + 1)));
+	}
+	for (long i = 0; i < n; i++) {
+		double acc = 0;
+		long a = i - h < 0 ? -(i - h) : 0, b = i + h >= n ? 2 * h - (i + h - n + 1) : 2 * h;
+		for (long m = a; m <= b; m++)
+			acc += tap[m] * x[i - h + m];
+		y[i] = acc;
+	}
+}
+
 int pitch_track(const double *x, long n, int sr, const long *centres, int nframes, double fmin, double fmax,
 	double *f0, double *ap, unsigned char *voiced)
 {
 	pitch_frame *pf = malloc(sizeof(pitch_frame) * (nframes > 0 ? nframes : 1));
 	double *raw = malloc(sizeof(double) * (nframes > 0 ? nframes : 1));
-	if (!pf || !raw) {
+	double *lp = malloc(sizeof(double) * (n > 0 ? n : 1));
+	if (!pf || !raw || !lp) {
 		free(pf);
 		free(raw);
+		free(lp);
 		return -1;
 	}
+	lowpass(x, n, sr, lp);
 	double top = 0;
 	int span = (int)lround(PITCH_GATE_MS * sr / 1000);
 	for (int k = 0; k < nframes; k++) {
@@ -237,7 +267,7 @@ int pitch_track(const double *x, long n, int sr, const long *centres, int nframe
 			top = e;
 	}
 	for (int k = 0; k < nframes; k++) {
-		pitch_yin_frame(x, n, sr, centres[k], fmin, fmax, &pf[k]);
+		pitch_yin_frame(lp, n, sr, centres[k], fmin, fmax, &pf[k]);
 		if (!(raw[k] > top * pow(10, -PITCH_FLOOR_DB / 10))) {
 			pf[k].voiced = 0;
 			pf[k].ap = 1;
@@ -277,5 +307,6 @@ int pitch_track(const double *x, long n, int sr, const long *centres, int nframe
 	}
 	free(pf);
 	free(raw);
+	free(lp);
 	return rc;
 }

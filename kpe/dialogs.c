@@ -272,21 +272,13 @@ static int discard_preview(void)
 	return 1;
 }
 
-/* The tolerance fields, in the order of tol_ids: Hz (formants and bandwidths), F0, dB, Rd and %. */
-enum { TOL_HZ, TOL_F0, TOL_DB, TOL_RD, TOL_PCT, NTOL };
+/* The tolerance fields, in the order of the OPT_TOL_* classes (optimize.h). */
+#define NTOL OPT_NTOL
 static const int tol_ids[NTOL] = { IDC_TOL_HZ, IDC_TOL_F0, IDC_TOL_DB, IDC_TOL_RD, IDC_TOL_PCT };
 
 static double tolerance_for(int p, const double *tol)
 {
-	if (p == KP_F0)
-		return tol[TOL_F0];
-	if (p == KP_RD)
-		return tol[TOL_RD];
-	klatt_param_info pi;
-	KlattParamInfo(KLATT_FRAME, p, &pi);
-	if (strcmp(pi.unit, "dB") == 0)
-		return tol[TOL_DB];
-	return strcmp(pi.unit, "%") == 0 ? tol[TOL_PCT] : tol[TOL_HZ];
+	return tol[opt_tol_class(p)];
 }
 
 /* Undoes an earlier preview, then optimizes the checked tracks as one undo step. Returns 1, or 0 if a field
@@ -372,9 +364,8 @@ static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 			SendMessageW(grid, CB_SETITEMDATA, at, (LPARAM)lround(frames));
 		}
 		SendMessageW(grid, CB_SETCURSEL, 0, 0);
-		static const double tol_default[NTOL] = { 20, 2, 1, 0.05, 2 };
 		for (int i = 0; i < NTOL; i++)
-			set_number(dlg, tol_ids[i], tol_default[i]);
+			set_number(dlg, tol_ids[i], opt_tol_default[i]);
 		previewed = 0;
 		saved_dirty = app.doc.dirty;
 		return TRUE;

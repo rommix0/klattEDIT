@@ -19,8 +19,9 @@ typedef struct {
  * beyond the ends count as zero. A frame without any dip in range gets ncand 0, ap 1, not voiced. */
 void pitch_yin_frame(const double *x, long n, int sr, long centre, double fmin, double fmax, pitch_frame *out);
 
-/* The whole signal: nframes frames centred on centres[k]. Fills f0[k] (Hz, smoothed; 0 where unvoiced), ap[k] and
- * voiced[k]. Returns 0, or -1 when out of memory. */
+/* The whole signal, low-passed at 1.5 kHz first: nframes frames centred on centres[k]. Fills f0[k] (Hz, smoothed;
+ * 0 where unvoiced), ap[k] and voiced[k]. Frames more than 40 dB below the loudest are unvoiced; a frame next to a
+ * voiced one stays voiced while its aperiodicity is below 0.45. Returns 0, or -1 when out of memory. */
 int pitch_track(const double *x, long n, int sr, const long *centres, int nframes, double fmin, double fmax,
 	double *f0, double *ap, unsigned char *voiced);
 

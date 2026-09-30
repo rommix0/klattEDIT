@@ -6,9 +6,7 @@
 
 #define PI 3.14159265358979323846
 
-/* In-place iterative radix-2 FFT; n is a power of two. tw_re/tw_im[j] hold cos/sin(-2*PI*j/n) for j in
- * [0, n/2), precomputed once per spectro_compute call instead of recomputed in every butterfly. */
-static void fft(double *re, double *im, int n, const double *tw_re, const double *tw_im)
+void spectro_fft(double *re, double *im, int n, const double *tw_re, const double *tw_im)
 {
 	for (int i = 1, j = 0; i < n; i++) {
 		int bit = n >> 1;
@@ -74,7 +72,7 @@ int spectro_compute(const short *pcm, int n, double sr, double window_ms, double
 			double prev = s - 1 >= 0 && s - 1 < n ? pcm[s - 1] : 0;
 			re[i] = (x - 0.94 * prev) * (0.5 - 0.5 * cos(2 * PI * i / (win - 1)));
 		}
-		fft(re, im, nfft, tw_re, tw_im);
+		spectro_fft(re, im, nfft, tw_re, tw_im);
 		for (int b = 0; b < nbins; b++)
 			db[(size_t)c * nbins + b] = (float)(10 * log10(re[b] * re[b] + im[b] * im[b] + 1e-12));
 	}

@@ -1,7 +1,24 @@
 /* optimize.c - Douglas-Peucker simplification restricted to grid frames. See optimize.h. */
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
+#include "klatt.h"
 #include "optimize.h"
+
+const double opt_tol_default[OPT_NTOL] = { 20, 2, 1, 0.05, 2 };
+
+int opt_tol_class(int p)
+{
+	if (p == KP_F0)
+		return OPT_TOL_F0;
+	if (p == KP_RD)
+		return OPT_TOL_RD;
+	klatt_param_info pi;
+	KlattParamInfo(KLATT_FRAME, p, &pi);
+	if (strcmp(pi.unit, "dB") == 0)
+		return OPT_TOL_DB;
+	return strcmp(pi.unit, "%") == 0 ? OPT_TOL_PCT : OPT_TOL_HZ;
+}
 
 /* Is frame i a breakpoint candidate? */
 static int candidate(int i, int count, int first_frame, int grid)
