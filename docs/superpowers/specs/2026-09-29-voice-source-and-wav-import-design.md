@@ -11,7 +11,8 @@ this design amends.
 
 **Goals**
 
-- **Part A, DLL 1.1:** an LF voicing source controlled by one shape parameter, Rd; flutter (FL) and diplophonia
+- **Part A, DLL 1.1:** an LF voicing source controlled by one shape parameter, Rd, which also approximates the same
+  tilt change on the 1980 source; flutter (FL) and diplophonia
   (DI) from Klatt & Klatt (1990); and two corrections that bring the noise source in line with Klatt (1980).
 - **Part B, WAV import:** File > Import WAV… analyses a recording and opens it as a new document: F0, voicing,
   F1-F4, B1-B3, Rd, aspiration, and frication with its parallel-branch spectrum. The result is a first draft for
@@ -47,7 +48,7 @@ Appended after the existing ones, so no existing index changes.
 
 | Kind | Name | Index | Meaning | Unit | Min | Max | Default |
 |---|---|---|---|---|---|---|---|
-| frame | Rd | 21 | LF shape: about 0.3 pressed, 1 modal, 2.7 breathy; used only when SRC = 1 | - | 0.3 | 2.7 | 1.0 |
+| frame | Rd | 21 | voice quality: about 0.3 pressed, 1 modal, 2.7 breathy; LF shape (SRC = 1) or tilt (SRC = 0, 3.3) | - | 0.3 | 2.7 | 1.0 |
 | frame | DI | 22 | diplophonia (double pulsing) | % | 0 | 100 | 0 |
 | global | SRC | 18 | voicing source: 0 = Klatt 1980 impulse, 1 = LF | - | 0 | 1 | 0 |
 | global | FL | 19 | flutter | % | 0 | 100 | 0 |
@@ -81,7 +82,22 @@ Appended after the existing ones, so no existing index changes.
 - The source must be free of per-period discontinuities: the filters run continuously across pulses (their
   coefficients change at the pulse), as in fextr.
 
-### 3.3 Flutter and diplophonia
+### 3.3 Rd with the 1980 source (SRC = 0)
+
+Rd approximates the LF source's change of spectral tilt by scaling the glottal resonator's bandwidth:
+
+- At each pulse, with the current F0 and the latched Rd, compute L(Rd) = 20·log10|H(f_hi)| - 20·log10|H(F0)|, where
+  H is the LF source's frequency response from 3.2 (glottal formant times tilt, at that F0) and
+  f_hi = min(3000 Hz, 0.45·SR). Then Δ = L(Rd) - L(1) in dB.
+- RGP uses the bandwidth BGP·10^(Δ/40) for that pulse (a two-pole low-pass changes its level far above the corner by
+  40 dB per decade of bandwidth), clamped to 10 Hz-0.45·SR. FGP, FGZ, BGZ and RGS are unchanged.
+- At Rd = 1, Δ is exactly 0 and the factor exactly 1, so the default gives the 1980 source bit for bit. Rd below 1
+  brightens the source (pressed), above 1 darkens it (breathy), and an Rd fitted by the import means roughly the
+  same in either mode.
+- Like the LF source's other settings, this changes only at pulses (the paper updates the voicing-source filters
+  pitch-synchronously).
+
+### 3.4 Flutter and diplophonia
 
 - **FL** (global): the phase advances by F0' = F0 + (FL/50)·(F0/100)·[sin(2π·12.7·t) + sin(2π·7.1·t) +
   sin(2π·4.7·t)] Hz per second, with t in seconds since create/reset (deterministic), only while F0 > 0, and F0'
@@ -90,7 +106,7 @@ Appended after the existing ones, so no existing index changes.
   multiplied by (1 - DI/100). At DI = 100 the delayed pulse closes as the next unaltered pulse opens (Klatt &
   Klatt 1990, p. 840). OQ is the LF open quotient for SRC = 1 and 0.5 for SRC = 0. DI is latched at the pulse.
 
-### 3.4 Noise and radiation (corrections to match Klatt 1980)
+### 3.5 Noise and radiation (corrections to match Klatt 1980)
 
 - **Noise generator:** each sample is the sum of 16 uniform pseudo-random numbers, centred on zero (paper p. 977;
   was 4).
@@ -111,7 +127,7 @@ Appended after the existing ones, so no existing index changes.
   (their definitions in klatt.c stay), and the approved `tests/golden/ba.raw` is recorded again after the user
   listens.
 
-### 3.5 Editor support
+### 3.6 Editor support
 
 - Left panel: a new group "Voice" with Rd and DI. The Globals dialog lists SRC and FL like any other global (it is
   generated from the DLL's table).
@@ -121,13 +137,16 @@ Appended after the existing ones, so no existing index changes.
   file has all 23 columns.
 - `samples/python/klatt.py` keeps working (it reads the counts from the DLL); checked, not assumed.
 
-### 3.6 Tests (automated, both architectures)
+### 3.7 Tests (automated, both architectures)
 
 - **LF shape:** at F0 = 100 Hz and Rd = 0.5, 1 and 2.5, the source spectrum (SW = 1, AB only, corrected for the AB
   path's first difference) rises below Fg and falls above it, steeper above Fa, with Fg and Fa within 10 % of the
   formulas; a larger Rd gives a steeper high-frequency roll-off.
 - **LF level:** at fixed AV, the output RMS stays within ±1 dB as Rd sweeps 0.3-2.7 (F0 = 100 and 200 Hz); the LF and
   1980 sources match within 0.5 dB at the calibration point.
+- **1980 tilt:** with SRC = 0, Rd = 1 is bit-identical to the source without Rd; at F0 = 100 and 200 Hz the level near
+  f_hi relative to H1 falls monotonically as Rd rises, and its change from Rd = 1 is within 4 dB of the LF source's
+  change for Rd 0.5-2.5.
 - **Timing:** SRC = 1 keeps the pitch accuracy of the existing F0 tests (fractional periods, no rounding to whole
   samples).
 - **FL:** FL = 0 is bit-identical to no flutter; FL = 100 gives a measured F0 track within 10 % of the formula's
@@ -252,7 +271,7 @@ Applied to `2026-09-28-kpe-open-design.md` by the implementing plans:
 
 - §1: resynthesis moves from non-goals to this design.
 - §3: the repository is now `C:\Users\abart\Desktop\KPE\kpe_open`, with new analysis files in `kpe/`.
-- §4.1: source selection (SRC), the LF source, FL/DI, the noise changes and the radiation's new place.
+- §4.1: source selection (SRC), the LF source, Rd's tilt on the 1980 source, FL/DI, the noise changes and the radiation's new place.
 - §4.2: the four new rows; counts 23 and 20; Rd's resolution; the frame and global orders.
 - §4.4: `KlattParamCount` returns 23 or 20; version 1.1.0.
 - §5.1: the "Voice" group; §5.5: File > Import WAV…; §5.6: the Rd and % tolerances; §5.7: 23 columns.
