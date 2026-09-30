@@ -20,11 +20,12 @@ static void measure(const double *frame, int sw, double *peak, double *rms)
 	klatt_h h;
 	KlattCreate(g, &h);
 	load_frame(h, frame);
+	load_frame(h, frame); /* twice, so the AF/AH ramps start at their targets */
 	int n = (int)h->sr; /* one second; skip the first 0.1 s */
 	double pk = 0, sq = 0;
 	int cnt = 0;
 	for (int i = 0; i < n; i++) {
-		double v = sample(h);
+		double v = sample(h, 1.0);
 		if (i < n / 10) continue;
 		if (fabs(v) > pk) pk = fabs(v);
 		sq += v * v;

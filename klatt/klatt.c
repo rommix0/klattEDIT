@@ -12,14 +12,14 @@
 #define K_OUT   4.125e5 /* neutral vowel, AV = 60, G0 = 47: peak about 16000 */
 #endif
 #ifndef K_NOISE
-#define K_NOISE 4.071e-4 /* AH = 60 alone: same RMS as AV = 60 alone */
+#define K_NOISE 2.070e-4 /* AH = 60 alone: same RMS as AV = 60 alone */
 #endif
 #ifndef K_PAR
 #define K_PAR   6.0 /* SW = 1, A1-A4 = 60: same RMS as the cascade vowel */
 #endif
 
-#define NOISE_POLE 0.9 /* noise low-pass y[n] = x[n] + NOISE_POLE*y[n-1]; with the radiation difference it is flat */
 #define K_BYPASS 0.45 /* a formant resonator/antiresonator at or above K_BYPASS*SR is bypassed for the frame */
+#define AF_JUMP_DB 50.0 /* an AF rise larger than this jumps at the frame start instead of ramping */
 
 struct klatt_synth {
 	double g[KLATT_NUM_GLOBAL]; /* clamped globals */
@@ -36,9 +36,10 @@ struct klatt_synth {
 	double av, avs, av_next, avs_next, f0_next;
 	reson rgp, rgs;
 	antireson rgz;
+	double v_prev;              /* previous voicing sample, for the radiation first difference */
 
-	double noise_lp;
-	double ah, af;              /* linear noise gains of the current frame */
+	double ah0, ah1, af0, af1;  /* linear noise gains ramped across the frame from *0 to *1 */
+	double af_db;               /* AF of the previous frame, for the jump rule */
 
 	reson rnp;                  /* cascade nasal pole */
 	antireson rnz;              /* cascade nasal zero */
@@ -49,7 +50,6 @@ struct klatt_synth {
 	reson rnp_par;              /* parallel nasal formant */
 	double a[6], an, ab;        /* linear parallel gains of the current frame */
 	double par_prev;            /* previous parallel voicing input, for its first difference */
-	double rad_prev;            /* previous output, for the radiation first difference */
 };
 
 static double db_to_lin(double db)
@@ -57,14 +57,15 @@ static double db_to_lin(double db)
 	return db <= 0.0 ? 0.0 : pow(10.0, (db - 80.0) / 20.0);
 }
 
+/* White, approximately Gaussian noise: the sum of 16 uniform numbers (paper p. 977), centred on zero. */
 static double noise(struct klatt_synth *s)
 {
 	double sum = 0.0;
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 16; i++) {
 		s->rng = s->rng * 1664525u + 1013904223u;
 		sum += (double)(s->rng >> 8) / 16777216.0;
 	}
-	return sum - 2.0; /* approximately Gaussian, mean 0 */
+	return sum - 8.0;
 }
 
 static void clear_reson(reson *r) { r->y1 = r->y2 = 0.0; }
@@ -112,7 +113,8 @@ KLATT_API void KLATT_CALL KlattReset(klatt_h s, unsigned seed)
 	s->overload = 0;
 	s->phase = 1.0;
 	s->av = s->avs = s->av_next = s->avs_next = s->f0_next = 0.0;
-	s->noise_lp = s->par_prev = s->rad_prev = 0.0;
+	s->v_prev = s->par_prev = 0.0;
+	s->ah0 = s->ah1 = s->af0 = s->af1 = s->af_db = 0.0;
 	clear_reson(&s->rgp);
 	clear_reson(&s->rgs);
 	clear_anti(&s->rgz);
@@ -160,15 +162,25 @@ static void load_frame(struct klatt_synth *s, const double *in)
 	s->av_next = db_to_lin(p[KP_AV]);
 	s->avs_next = db_to_lin(p[KP_AVS]);
 	s->f0_next = p[KP_F0];
-	s->ah = K_NOISE * db_to_lin(p[KP_AH]);
-	s->af = K_NOISE * db_to_lin(p[KP_AF]);
+
+	/* AF and AH ramp linearly across the frame (paper p. 978), except that an AF rise of more than
+	 * AF_JUMP_DB jumps at once, for plosive bursts. */
+	s->ah0 = s->ah1;
+	s->af0 = s->af1;
+	s->ah1 = K_NOISE * db_to_lin(p[KP_AH]);
+	s->af1 = K_NOISE * db_to_lin(p[KP_AF]);
+	if (p[KP_AF] - s->af_db > AF_JUMP_DB)
+		s->af0 = s->af1;
+	s->af_db = p[KP_AF];
+
 	for (int k = 0; k < 6; k++)
 		s->a[k] = K_PAR * db_to_lin(p[KP_A1 + k]);
 	s->an = K_PAR * db_to_lin(p[KP_AN]);
 	s->ab = K_PAR * db_to_lin(p[KP_AB]);
 }
 
-static double sample(struct klatt_synth *s)
+/* One output sample; frac is how far through the frame this sample is, in (0, 1]. */
+static double sample(struct klatt_synth *s, double frac)
 {
 	/* Voicing: an impulse each time the glottal phase wraps past 1, F0 read fresh every sample so a
 	 * change takes effect within the current period instead of waiting for it to finish. */
@@ -187,15 +199,20 @@ static double sample(struct klatt_synth *s)
 		s->av = s->av_next;
 		s->avs = s->avs_next;
 	}
+
+	/* The voicing source as glottal flow, then its first difference (lip radiation, moved here from the
+	 * output so the noise can enter the tract white; see docs/klatt-dll.md). */
 	double gp = reson_step(&s->rgp, pulse);
-	double voice = s->av * antireson_step(&s->rgz, gp) + s->avs * reson_step(&s->rgs, gp);
+	double v = s->av * antireson_step(&s->rgz, gp) + s->avs * reson_step(&s->rgs, gp);
+	double voice = v - s->v_prev;
+	s->v_prev = v;
 
 	/* Noise, halved in the second half of each voiced period. */
-	s->noise_lp = noise(s) + NOISE_POLE * s->noise_lp;
-	double n = s->noise_lp;
+	double n = noise(s);
 	if (voiced && s->av > 0.0 && s->phase >= 0.5)
 		n *= 0.5;
-	double asp = s->ah * n, fric = s->af * n;
+	double asp = (s->ah0 + (s->ah1 - s->ah0) * frac) * n;
+	double fric = (s->af0 + (s->af1 - s->af0) * frac) * n;
 
 	/* Cascade branch: voicing and aspiration (unless SW = 1). A resonator/antiresonator whose frequency is
 	 * at or above K_BYPASS*sr is bypassed: its input passes through unchanged. */
@@ -226,11 +243,7 @@ static double sample(struct klatt_synth *s)
 	double t5 = s->bypass_r[5] ? 0.0 : s->a[5] * reson_step(&s->rp[5], src);
 	double par = t0 + tn - t1 + t2 - t3 + t4 - t5 + s->ab * src;
 
-	/* Radiation: first difference. */
-	double sum = casc + par;
-	double out = sum - s->rad_prev;
-	s->rad_prev = sum;
-	return out * s->out_gain;
+	return (casc + par) * s->out_gain;
 }
 
 KLATT_API int KLATT_CALL KlattSynthFrame(klatt_h s, const double *frame, short *out, int max)
@@ -242,7 +255,7 @@ KLATT_API int KLATT_CALL KlattSynthFrame(klatt_h s, const double *frame, short *
 		return KLATT_ERR_BUFFER;
 	load_frame(s, frame);
 	for (int i = 0; i < n; i++) {
-		double v = floor(sample(s) + 0.5);
+		double v = floor(sample(s, (i + 1.0) / n) + 0.5);
 		if (v > 32767.0) { v = 32767.0; s->overload++; }
 		if (v < -32768.0) { v = -32768.0; s->overload++; }
 		out[i] = (short)v;
