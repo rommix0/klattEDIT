@@ -344,7 +344,7 @@ static void cmd_delete(void)
 		return;
 	}
 	app.sel_a = -1;
-	app_set_cursor(at, 0);
+	app_set_cursor(at < app.doc.nframes ? at : app.doc.nframes - 1, 0);
 	app_changed(CHG_FRAMES);
 }
 
