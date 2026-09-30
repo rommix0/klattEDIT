@@ -45,8 +45,9 @@ typedef struct {
 	double *globals, *duration_ms;
 } globals_args;
 
-/* Creates a label and an edit field per global inside the IDC_FIELDS frame; without the duration row
- * (Globals rather than New) the fields move up into its place. */
+/* Creates one row per global inside the IDC_FIELDS frame, in table order: the name, its description (so SW
+ * and SRC cannot be mistaken for each other), the range with its unit, and the edit field, left to right.
+ * Without the duration row (Globals rather than New) the fields move up into its place. */
 static void create_fields(HWND dlg, const double *g, int with_duration)
 {
 	RECT area, dur;
@@ -57,25 +58,35 @@ static void create_fields(HWND dlg, const double *g, int with_duration)
 		MapWindowPoints(NULL, dlg, (POINT *)&dur, 2);
 		area.top = dur.top;
 	}
-	RECT du = { 0, 0, 4, 14 }; /* a row is 14 dialog units high */
+	RECT du = { 0, 0, 4, 14 }; /* a row is 14 dialog units high; 4 du is the gap between columns */
 	MapDialogRect(dlg, &du);
-	int row_h = du.bottom, col_w = (area.right - area.left) / 2, rows = (NG + 1) / 2;
+	int row_h = du.bottom, pad = du.right, row_w = area.right - area.left;
+	int name_w = row_w * 12 / 100, desc_w = row_w * 50 / 100, range_w = row_w * 20 / 100;
+	int name_x = area.left, desc_x = name_x + name_w, range_x = desc_x + desc_w, edit_x = range_x + range_w;
 	HFONT font = (HFONT)SendMessageW(dlg, WM_GETFONT, 0, 0);
 	for (int i = 0; i < NG; i++) {
 		klatt_param_info pi;
 		KlattParamInfo(KLATT_GLOBAL, i, &pi);
-		int x = area.left + (i / rows) * col_w, y = area.top + (i % rows) * row_h;
-		wchar_t label[96];
+		int y = area.top + i * row_h;
+		wchar_t name[32], desc[128], range[48];
+		swprintf(name, 32, L"%hs", pi.name);
+		swprintf(desc, 128, L"%hs", pi.description);
 		if (strcmp(pi.unit, "-") == 0)
-			swprintf(label, 96, L"%hs (%g-%g)", pi.name, pi.min, pi.max);
+			swprintf(range, 48, L"%g-%g", pi.min, pi.max);
 		else
-			swprintf(label, 96, L"%hs (%g-%g %hs)", pi.name, pi.min, pi.max, pi.unit);
-		HWND s = CreateWindowExW(0, L"STATIC", label, WS_CHILD | WS_VISIBLE | SS_NOPREFIX, x, y + 2,
-		                         col_w * 62 / 100, row_h - 2, dlg, NULL, app.inst, NULL);
+			swprintf(range, 48, L"%g-%g %hs", pi.min, pi.max, pi.unit);
+		HWND sn = CreateWindowExW(0, L"STATIC", name, WS_CHILD | WS_VISIBLE | SS_NOPREFIX, name_x, y + 2,
+		                          name_w - pad, row_h - 2, dlg, NULL, app.inst, NULL);
+		HWND sd = CreateWindowExW(0, L"STATIC", desc, WS_CHILD | WS_VISIBLE | SS_NOPREFIX, desc_x, y + 2,
+		                          desc_w - pad, row_h - 2, dlg, NULL, app.inst, NULL);
+		HWND sr = CreateWindowExW(0, L"STATIC", range, WS_CHILD | WS_VISIBLE | SS_NOPREFIX, range_x, y + 2,
+		                          range_w - pad, row_h - 2, dlg, NULL, app.inst, NULL);
 		HWND e = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
-		                         x + col_w * 62 / 100, y, col_w * 32 / 100, row_h - 2, dlg,
+		                         edit_x, y, area.right - edit_x, row_h - 2, dlg,
 		                         (HMENU)(INT_PTR)(IDC_FIELD_BASE + i), app.inst, NULL);
-		SendMessageW(s, WM_SETFONT, (WPARAM)font, 0);
+		SendMessageW(sn, WM_SETFONT, (WPARAM)font, 0);
+		SendMessageW(sd, WM_SETFONT, (WPARAM)font, 0);
+		SendMessageW(sr, WM_SETFONT, (WPARAM)font, 0);
 		SendMessageW(e, WM_SETFONT, (WPARAM)font, 0);
 		set_number(dlg, IDC_FIELD_BASE + i, g[i]);
 	}

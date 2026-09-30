@@ -248,8 +248,9 @@ void KlattDestroy(klatt_h h);
 
 - **View > Frame table:** a separate window with a virtual list: rows are frames, columns are `time_ms` and the
   23 frame parameters. F2 or double-click edits a cell. The selected row and the main cursor follow each other.
-- **Parameters > Globals…:** every global, each validated against its range. When FRAME_MS changes, the frames
-  are resampled by linear interpolation so the duration stays the same, and a notice says so.
+- **Parameters > Globals…:** every global on its own row with its name, description and range, each validated
+  against its range. When FRAME_MS changes, the frames are resampled by linear interpolation so the duration
+  stays the same, and a notice says so.
 - **Parameters > Optimize…:** see 5.6.
 - **File > New…:** duration in ms and the globals (defaults from the table). The document starts as silence
   (AV = AF = AH = AVS = 0) with the frame parameters at their defaults.

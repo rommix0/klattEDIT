@@ -46,6 +46,8 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 ## Dialogs
 
 - [ ] Parameters > Globals...: a value outside its range is refused with a message naming the parameter.
+- [ ] Parameters > Globals... and File > New... list every global on its own row with its name, description and
+      range; SW and SRC cannot be mistaken for each other.
 - [ ] Changing FRAME_MS from 5 to 10 keeps the duration, halves the frame count, and shows a notice that the
       frames were resampled and the duration stays about the same.
 - [ ] Parameters > Optimize...: Preview shows the original tracks faintly and a summary per track; Apply keeps
