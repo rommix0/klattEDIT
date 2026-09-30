@@ -16,6 +16,10 @@ static void end_edit(int commit)
 	if (!editor)
 		return;
 	HWND e = editor;
+	/* GetFocus() still reports e here when we are ending the edit ourselves (Return/Escape, or closing it to
+	 * open another cell) but not when we are called from e's own WM_KILLFOCUS, by which point the focus has
+	 * already moved elsewhere; only the former should steal focus back to the list. */
+	int restore = GetFocus() == e;
 	editor = NULL; /* before DestroyWindow, which sends WM_KILLFOCUS */
 	if (commit) {
 		wchar_t t[64], *end;
@@ -35,7 +39,8 @@ static void end_edit(int commit)
 		}
 	}
 	DestroyWindow(e);
-	SetFocus(list);
+	if (restore)
+		SetFocus(list);
 }
 
 static LRESULT CALLBACK editor_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR ref)

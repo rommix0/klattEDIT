@@ -121,7 +121,7 @@ static INT_PTR CALLBACK globals_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 			ShowWindow(GetDlgItem(dlg, IDC_DURATION_LBL), SW_HIDE);
 			ShowWindow(GetDlgItem(dlg, IDC_DURATION), SW_HIDE);
 			SetDlgItemTextW(dlg, IDC_NOTE, L"Changing FRAME_MS resamples the frames so that the duration stays "
-			                               L"the same.");
+			                               L"about the same.");
 		}
 		return TRUE;
 	case WM_COMMAND:

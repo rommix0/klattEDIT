@@ -20,6 +20,10 @@ static long read_raw(const wchar_t *path, short **out)
 	long n = ftell(f) / (long)sizeof(short);
 	fseek(f, 0, SEEK_SET);
 	*out = malloc(sizeof(short) * (n > 0 ? n : 1));
+	if (!*out) {
+		fclose(f);
+		return -1;
+	}
 	n = (long)fread(*out, sizeof(short), n, f);
 	fclose(f);
 	return n;
@@ -33,13 +37,13 @@ void suite_golden(void)
 		csv_report r;
 		synth_result s;
 		swprintf(path, 260, L"../../samples/%ls.csv", samples[i]); /* the runner works in build/32 or build/64 */
-		int csv_result = csv_load(path, &d, &r);
-		CHECK(csv_result == 0);
-		if (csv_result != 0)
+		int csv_rc = csv_load(path, &d, &r);
+		CHECK(csv_rc == 0);
+		if (csv_rc != 0)
 			continue;
-		int synth_result = synth_doc(&d, &s);
-		CHECK(synth_result == 0);
-		if (synth_result != 0) {
+		int synth_rc = synth_doc(&d, &s);
+		CHECK(synth_rc == 0);
+		if (synth_rc != 0) {
 			doc_free(&d);
 			continue;
 		}

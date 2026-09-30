@@ -22,6 +22,7 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 - [ ] Dragging in the time ruler selects frames across all strips; a click without dragging moves the cursor.
 - [ ] Edit > Undo and Redo name the step ("Undo Paint F2") and restore exactly.
 - [ ] Cut, Copy, Paste, Delete frames and Insert frames... change the duration shown in the status bar.
+- [ ] After Delete frames the table row matches the cursor.
 - [ ] View > Frame table: selecting a row moves the cursor; F2 or a double-click edits a cell; Enter commits and
       the plot follows; Escape cancels.
 
@@ -43,6 +44,7 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 - [ ] Parameters > Optimize...: Preview shows the original tracks faintly and a summary per track; Apply keeps
       the result as one undo step; Cancel restores the original. (Accepted limitation: recording the preview
       step clears any redo history that existed before Preview was first pressed in this dialog session.)
+- [ ] Optimize > Preview > Cancel leaves the title without * and Redo disabled.
 - [ ] Help > Parameter reference lists all 21 frame parameters and 18 globals.
 
 ## Files

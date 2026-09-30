@@ -112,9 +112,21 @@ static void respectro(void)
 	plot_new_spectrogram();
 }
 
+/* Keeps the formant strip's top frequency inside the range cmd_freq_range offers for the current SR: SR can
+ * change (Globals, Open/New, undo/redo of any of those) and leave a stale, now out-of-range value. */
+static void clamp_spec_top_hz(void)
+{
+	double lo = 1000, hi = app.doc.globals[KG_SR] / 2;
+	if (app.spec_top_hz > hi)
+		app.spec_top_hz = hi;
+	if (app.spec_top_hz < lo)
+		app.spec_top_hz = lo;
+}
+
 void app_changed(int what)
 {
 	(void)what; /* every change re-synthesizes: at 11025 Hz a whole document takes milliseconds */
+	clamp_spec_top_hz();
 	synth_result_free(&app.snd);
 	int r = synth_doc(&app.doc, &app.snd);
 	if (r < 0)
@@ -163,8 +175,8 @@ static void replace_doc(kpe_doc *d, const wchar_t *path)
 	doc_free(&app.doc);
 	app.doc = *d;
 	set_path(path);
-	app.cursor = 0;
 	app.sel_a = -1;
+	app_set_cursor(0, 0);
 	app_changed(CHG_ALL);
 	plot_fit();
 }
@@ -304,28 +316,35 @@ static int has_selection(void)
 	return app.sel_a >= 0 && app.sel_b >= app.sel_a;
 }
 
-static void copy_selection(void)
+/* Returns 1 on success, 0 if it ran out of memory (app.clip is left untouched). */
+static int copy_selection(void)
 {
 	int count = app.sel_b - app.sel_a + 1;
 	double *c = malloc(sizeof(double) * NP * count);
 	if (!c)
-		return;
+		return 0;
 	doc_copy_frames(&app.doc, app.sel_a, count, c);
 	free(app.clip);
 	app.clip = c;
 	app.nclip = count;
+	return 1;
 }
 
 static void cmd_delete(void)
 {
 	if (!has_selection())
 		return;
-	if (doc_delete_frames(&app.doc, app.sel_a, app.sel_b - app.sel_a + 1) < 0) {
-		app_error("The whole document cannot be deleted; at least one frame must remain.");
+	int at = app.sel_a, count = app.sel_b - app.sel_a + 1;
+	if (count >= app.doc.nframes) {
+		app_error("At least one frame must remain.");
 		return;
 	}
-	app.cursor = app.sel_a;
+	if (doc_delete_frames(&app.doc, at, count) < 0) {
+		app_error("Out of memory.");
+		return;
+	}
 	app.sel_a = -1;
+	app_set_cursor(at, 0);
 	app_changed(CHG_FRAMES);
 }
 
@@ -422,8 +441,25 @@ static void cmd_freq_range(void)
 	}
 }
 
+/* A paint drag holds a transaction open (doc_begin/doc_end around mouse move); commands that change the
+ * document would otherwise interleave with it. */
+static int blocked_while_open(int id)
+{
+	if (!app.doc.open)
+		return 0;
+	switch (id) {
+	case IDM_DELETE: case IDM_INSERT: case IDM_PASTE: case IDM_CUT:
+	case IDM_UNDO: case IDM_REDO: case IDM_GLOBALS: case IDM_OPTIMIZE:
+	case IDM_NEW: case IDM_OPEN:
+		return 1;
+	}
+	return 0;
+}
+
 static void command(int id)
 {
+	if (blocked_while_open(id))
+		return;
 	switch (id) {
 	case IDM_NEW: cmd_new(); break;
 	case IDM_OPEN: cmd_open(); break;
@@ -433,7 +469,7 @@ static void command(int id)
 	case IDM_EXIT: SendMessageW(app.main, WM_CLOSE, 0, 0); break;
 	case IDM_UNDO: if (doc_undo(&app.doc) < 0) app_error("Out of memory."); app_changed(CHG_ALL); break;
 	case IDM_REDO: if (doc_redo(&app.doc) < 0) app_error("Out of memory."); app_changed(CHG_ALL); break;
-	case IDM_CUT: if (has_selection()) { copy_selection(); cmd_delete(); } break;
+	case IDM_CUT: if (has_selection()) { if (copy_selection()) cmd_delete(); else app_error("Out of memory."); } break;
 	case IDM_COPY: if (has_selection()) copy_selection(); break;
 	case IDM_PASTE: cmd_paste(); break;
 	case IDM_DELETE: cmd_delete(); break;
@@ -441,7 +477,7 @@ static void command(int id)
 	case IDM_SELECTALL:
 		app.sel_a = 0;
 		app.sel_b = app.doc.nframes - 1;
-		InvalidateRect(app.plot, NULL, FALSE);
+		app_set_cursor(0, 0);
 		break;
 	case IDM_SYNTH: app_changed(CHG_VALUES); break;
 	case IDM_PLAY: play(0); break;
@@ -558,10 +594,10 @@ static void create_panel(void)
 
 static void layout(void)
 {
-	RECT rc;
+	RECT rc = { 0 };
 	GetClientRect(app.main, &rc);
 	SendMessageW(app.status, WM_SIZE, 0, 0);
-	RECT sr;
+	RECT sr = { 0 };
 	GetWindowRect(app.status, &sr);
 	int sh = sr.bottom - sr.top, pw = S(170);
 	int parts[3] = { rc.right - S(560), rc.right - S(340), -1 };
@@ -600,6 +636,14 @@ static LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 		if (confirm_discard())
 			DestroyWindow(h);
 		return 0;
+	case WM_QUERYENDSESSION:
+		return confirm_discard();
+	case WM_GETMINMAXINFO: {
+		MINMAXINFO *mmi = (MINMAXINFO *)lp;
+		mmi->ptMinTrackSize.x = S(640);
+		mmi->ptMinTrackSize.y = S(480);
+		return 0;
+	}
 	case WM_DESTROY:
 		audio_stop();
 		PostQuitMessage(0);

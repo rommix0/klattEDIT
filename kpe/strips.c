@@ -30,7 +30,7 @@ static int MB(void) { return S(44); }  /* time axis and selection ruler */
 
 static int plot_width(void)
 {
-	RECT rc;
+	RECT rc = { 0 };
 	GetClientRect(app.plot, &rc);
 	int w = rc.right - ML() - MR();
 	return w > 1 ? w : 1;
@@ -605,7 +605,7 @@ static LRESULT CALLBACK plot_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 	case WM_MOUSEWHEEL: {
 		POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
 		ScreenToClient(h, &pt);
-		int notches = GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA;
+		double notches = GET_WHEEL_DELTA_WPARAM(wp) / (double)WHEEL_DELTA;
 		if (GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) {
 			zoom_at(pow(0.8, notches), pt.x);
 		} else {
