@@ -27,6 +27,8 @@ static const klatt_param_info frame_params[KLATT_NUM_FRAME] = {
 	{ "B1",  "Hz", "formant 1 bandwidth",            40,  500,   50 },
 	{ "B2",  "Hz", "formant 2 bandwidth",            40,  500,   70 },
 	{ "B3",  "Hz", "formant 3 bandwidth",            40,  500,  110 },
+	{ "Rd",  "-",  "voice quality (pressed to breathy)", 0.3, 2.7, 1 },
+	{ "DI",  "%",  "diplophonia (double pulsing)",    0,  100,    0 },
 };
 
 static const klatt_param_info global_params[KLATT_NUM_GLOBAL] = {
@@ -48,6 +50,8 @@ static const klatt_param_info global_params[KLATT_NUM_GLOBAL] = {
 	{ "FRAME_MS", "ms", "frame length",                            1,    20,     5 },
 	{ "G0",       "dB", "overall gain",                            0,    80,    47 },
 	{ "NFC",      "-",  "number of cascade formants",              4,     6,     5 },
+	{ "SRC",      "-",  "voicing source: 0 = Klatt 1980, 1 = LF",  0,     1,     0 },
+	{ "FL",       "%",  "flutter",                                 0,   100,     0 },
 };
 
 static const klatt_param_info *table(int kind, int *count)

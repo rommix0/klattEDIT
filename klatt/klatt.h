@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define KLATT_VERSION 10000 /* 1.0.0, as major*10000 + minor*100 + patch */
+#define KLATT_VERSION 10100 /* 1.1.0, as major*10000 + minor*100 + patch */
 
 enum { KLATT_FRAME = 0, KLATT_GLOBAL = 1 }; /* parameter kinds */
 
@@ -33,17 +33,19 @@ enum {
 	KLATT_ERR_MEMORY = -3
 };
 
-/* Frame parameters, in the order KlattSynthFrame expects them. */
+/* Frame parameters, in the order KlattSynthFrame expects them. Rd and DI were added in 1.1. */
 enum {
 	KP_AV, KP_AF, KP_AH, KP_AVS, KP_F0, KP_F1, KP_F2, KP_F3, KP_F4, KP_FNZ, KP_AN,
 	KP_A1, KP_A2, KP_A3, KP_A4, KP_A5, KP_A6, KP_AB, KP_B1, KP_B2, KP_B3,
+	KP_RD, KP_DI,
 	KLATT_NUM_FRAME
 };
 
-/* Global parameters, in the order KlattCreate expects them. */
+/* Global parameters, in the order KlattCreate expects them. SRC and FL were added in 1.1. */
 enum {
 	KG_SW, KG_FGP, KG_BGP, KG_FGZ, KG_BGZ, KG_BGS, KG_FNP, KG_BNP, KG_BNZ,
 	KG_B4, KG_F5, KG_B5, KG_F6, KG_B6, KG_SR, KG_FRAME_MS, KG_G0, KG_NFC,
+	KG_SRC, KG_FL,
 	KLATT_NUM_GLOBAL
 };
 

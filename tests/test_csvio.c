@@ -78,9 +78,9 @@ static void test_header_line_format(void)
 	CHECK(csv_save(L"fmt.csv", &d, &r) == 0);
 	FILE *f = _wfopen(L"fmt.csv", L"rb");
 	CHECK(fgets(line, sizeof line, f) != NULL);
-	CHECK(strcmp(line, "time_ms,AV,AF,AH,AVS,F0,F1,F2,F3,F4,FNZ,AN,A1,A2,A3,A4,A5,A6,AB,B1,B2,B3\r\n") == 0);
+	CHECK(strcmp(line, "time_ms,AV,AF,AH,AVS,F0,F1,F2,F3,F4,FNZ,AN,A1,A2,A3,A4,A5,A6,AB,B1,B2,B3,Rd,DI\r\n") == 0);
 	CHECK(fgets(line, sizeof line, f) != NULL);
-	CHECK(strcmp(line, "0,0,0,0,0,100,500,1500,2500,3500,250,0,0,0,0,0,0,0,0,50,70,110\r\n") == 0);
+	CHECK(strcmp(line, "0,0,0,0,0,100,500,1500,2500,3500,250,0,0,0,0,0,0,0,0,50,70,110,1,0\r\n") == 0);
 	CHECK(fgets(line, sizeof line, f) != NULL);
 	CHECK(strncmp(line, "5,", 2) == 0);
 	fclose(f);
