@@ -50,15 +50,23 @@ static void default_globals(double *g)
 	}
 }
 
+/* The file name part of path. */
+static const wchar_t *file_name(const wchar_t *path)
+{
+	const wchar_t *name = path;
+	for (const wchar_t *p = path; *p; p++)
+		if (*p == L'\\' || *p == L'/')
+			name = p + 1;
+	return name;
+}
+
+/* The saved file's name; an unsaved import is titled after its WAV. */
 static void update_title(void)
 {
 	wchar_t t[MAX_PATH + 64];
-	const wchar_t *name = app.path;
-	for (const wchar_t *p = app.path; *p; p++)
-		if (*p == L'\\' || *p == L'/')
-			name = p + 1;
-	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - Klatt Parameter Editor", app.path[0] ? name : L"Untitled",
-	         app.doc.dirty ? L"*" : L"");
+	const wchar_t *name = app.path[0] ? file_name(app.path) : app.import_path[0] ? file_name(app.import_path)
+		: L"Untitled";
+	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - Klatt Parameter Editor", name, app.doc.dirty ? L"*" : L"");
 	SetWindowTextW(app.main, t);
 }
 
@@ -169,12 +177,22 @@ static void set_path(const wchar_t *path)
 	}
 }
 
+/* Remembers the WAV an imported document came from (absolute, like app.path). */
+static void set_import_path(const wchar_t *path)
+{
+	if (!GetFullPathNameW(path, MAX_PATH, app.import_path, NULL)) {
+		wcsncpy(app.import_path, path, MAX_PATH - 1);
+		app.import_path[MAX_PATH - 1] = 0;
+	}
+}
+
 static void replace_doc(kpe_doc *d, const wchar_t *path)
 {
 	audio_stop();
 	doc_free(&app.doc);
 	app.doc = *d;
 	set_path(path);
+	app.import_path[0] = 0;
 	app.sel_a = -1;
 	app_set_cursor(0, 0);
 	app_changed(CHG_ALL);
@@ -211,6 +229,14 @@ static int save_as(void)
 {
 	wchar_t path[MAX_PATH];
 	wcsncpy(path, app.path, MAX_PATH);
+	if (!app.path[0] && app.import_path[0]) { /* an unsaved import: suggest <wav name>.csv next to the WAV */
+		wcsncpy(path, app.import_path, MAX_PATH - 5);
+		path[MAX_PATH - 5] = 0;
+		wchar_t *dot = wcsrchr(path, L'.');
+		if (dot && dot > file_name(path))
+			*dot = 0;
+		wcscat(path, L".csv");
+	}
 	if (!ask_path(1, csv_filter, L"csv", path))
 		return 0;
 	size_t len = wcslen(path);
@@ -222,6 +248,7 @@ static int save_as(void)
 	if (!save_to(path, &r))
 		return 0;
 	set_path(path); /* only after the save succeeds, so a failed Save As cannot repoint later Saves */
+	app.import_path[0] = 0;
 	update_title();
 	if (r.message[0])
 		app_error(r.message);
@@ -298,6 +325,33 @@ static void cmd_open(void)
 	wchar_t path[MAX_PATH] = L"";
 	if (confirm_discard() && ask_path(0, csv_filter, L"csv", path))
 		open_path(path);
+}
+
+/* File > Import WAV: the WAV becomes a new unsaved document (not an undo step, like Open); on any error the
+ * current document stays as it was. */
+static void cmd_import_wav(void)
+{
+	static import_options o = { VOICE_MALE, 11025, 0 }; /* remembered for the next import */
+	wchar_t path[MAX_PATH] = L"";
+	if (!confirm_discard() || !ask_path(0, L"WAV files (*.wav)\0*.wav\0All files (*.*)\0*.*\0", L"wav", path) ||
+	    !dlg_import(app.main, &o))
+		return;
+	HCURSOR old = SetCursor(LoadCursorW(NULL, IDC_WAIT));
+	app_status(L"Analyzing\x2026");
+	UpdateWindow(app.status);
+	kpe_doc d;
+	char msg[512];
+	int rc = import_wav(path, &o, &d, NULL, msg, sizeof msg);
+	SetCursor(old);
+	app_status(L"");
+	if (rc != 0) {
+		app_error(msg);
+		return;
+	}
+	replace_doc(&d, L"");
+	set_import_path(path);
+	app.doc.dirty = 1; /* unsaved: closing it asks first */
+	update_title();
 }
 
 static void cmd_export_wav(void)
@@ -450,7 +504,7 @@ static int blocked_while_open(int id)
 	switch (id) {
 	case IDM_DELETE: case IDM_INSERT: case IDM_PASTE: case IDM_CUT:
 	case IDM_UNDO: case IDM_REDO: case IDM_GLOBALS: case IDM_OPTIMIZE:
-	case IDM_NEW: case IDM_OPEN:
+	case IDM_NEW: case IDM_OPEN: case IDM_IMPORTWAV:
 		return 1;
 	}
 	return 0;
@@ -465,6 +519,7 @@ static void command(int id)
 	case IDM_OPEN: cmd_open(); break;
 	case IDM_SAVE: save(); break;
 	case IDM_SAVEAS: save_as(); break;
+	case IDM_IMPORTWAV: cmd_import_wav(); break;
 	case IDM_EXPORTWAV: cmd_export_wav(); break;
 	case IDM_EXIT: SendMessageW(app.main, WM_CLOSE, 0, 0); break;
 	case IDM_UNDO: if (doc_undo(&app.doc) < 0) app_error("Out of memory."); app_changed(CHG_ALL); break;

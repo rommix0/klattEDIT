@@ -11,6 +11,7 @@
 #define IDM_SAVEAS        1004
 #define IDM_EXPORTWAV     1005
 #define IDM_EXIT          1006
+#define IDM_IMPORTWAV     1007
 #define IDM_UNDO          1101
 #define IDM_REDO          1102
 #define IDM_CUT           1103
@@ -36,6 +37,7 @@
 #define IDD_OPTIMIZE      201
 #define IDD_PARAMREF      202
 #define IDD_ASKNUM        203
+#define IDD_IMPORT        204
 
 #define IDC_DURATION_LBL  2001
 #define IDC_DURATION      2002
@@ -55,6 +57,9 @@
 #define IDC_LIST          2201
 #define IDC_ASK_LABEL     2301
 #define IDC_ASK_VALUE     2302
+#define IDC_VOICE         2401
+#define IDC_TARGET_SR     2402
+#define IDC_SIMPLIFY      2403
 
 #define IDC_FIELD_BASE    3000 /* generated global fields: IDC_FIELD_BASE + global index */
 #define IDC_CHECK_BASE    4000 /* panel checkboxes: IDC_CHECK_BASE + parameter index */

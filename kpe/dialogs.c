@@ -1,5 +1,5 @@
-/* dialogs.c - File > New and Parameters > Globals (one dialog), Parameters > Optimize, Help > Parameter
- * reference, and a small number prompt. */
+/* dialogs.c - File > New and Parameters > Globals (one dialog), File > Import WAV's options, Parameters >
+ * Optimize, Help > Parameter reference, and a small number prompt. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -399,4 +399,54 @@ static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 void dlg_optimize(HWND owner)
 {
 	DialogBoxParamW(app.inst, MAKEINTRESOURCEW(IDD_OPTIMIZE), owner, optimize_proc, 0);
+}
+
+/* ---- Import WAV ---- */
+
+static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+	static import_options *o;
+	switch (msg) {
+	case WM_INITDIALOG: {
+		o = (import_options *)lp;
+		HWND voice = GetDlgItem(dlg, IDC_VOICE);
+		for (int v = 0; v < VOICE_COUNT; v++) {
+			wchar_t t[64];
+			swprintf(t, 64, L"%hs", import_voice(v)->name);
+			SendMessageW(voice, CB_ADDSTRING, 0, (LPARAM)t);
+		}
+		SendMessageW(voice, CB_SETCURSEL, o->voice, 0);
+		set_number(dlg, IDC_TARGET_SR, o->sr);
+		CheckDlgButton(dlg, IDC_SIMPLIFY, o->simplify ? BST_CHECKED : BST_UNCHECKED);
+		return TRUE;
+	}
+	case WM_COMMAND:
+		if (LOWORD(wp) == IDOK) {
+			double sr;
+			klatt_param_info pi;
+			KlattParamInfo(KLATT_GLOBAL, KG_SR, &pi);
+			if (!get_number(dlg, IDC_TARGET_SR, &sr) || sr < pi.min || sr > pi.max) {
+				wchar_t m[96];
+				swprintf(m, 96, L"Enter a sample rate from %g to %g Hz.", pi.min, pi.max);
+				reject(dlg, IDC_TARGET_SR, m);
+				return TRUE;
+			}
+			o->voice = (int)SendMessageW(GetDlgItem(dlg, IDC_VOICE), CB_GETCURSEL, 0, 0);
+			o->sr = (int)lround(sr);
+			o->simplify = IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
+			EndDialog(dlg, 1);
+			return TRUE;
+		}
+		if (LOWORD(wp) == IDCANCEL) {
+			EndDialog(dlg, 0);
+			return TRUE;
+		}
+		break;
+	}
+	return FALSE;
+}
+
+int dlg_import(HWND owner, import_options *o)
+{
+	return (int)DialogBoxParamW(app.inst, MAKEINTRESOURCEW(IDD_IMPORT), owner, import_proc, (LPARAM)o);
 }

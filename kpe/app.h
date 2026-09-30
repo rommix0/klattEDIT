@@ -7,6 +7,7 @@
 #include "model.h"
 #include "spectro.h"
 #include "synthrun.h"
+#include "wavimport.h"
 
 #define WM_APP_PLAYDONE (WM_APP + 1)
 
@@ -18,6 +19,7 @@ typedef struct {
 
 	kpe_doc doc;
 	wchar_t path[MAX_PATH];   /* L"" for a document never saved */
+	wchar_t import_path[MAX_PATH]; /* the WAV an unsaved imported document came from, else L"" */
 
 	synth_result snd;         /* the current synthesis of doc */
 	kpe_spectro spec;         /* its spectrogram */
@@ -67,6 +69,7 @@ int dlg_globals(HWND owner, double *globals, double *duration_ms); /* duration_m
 void dlg_optimize(HWND owner);
 void dlg_paramref(HWND owner);
 int dlg_asknum(HWND owner, const wchar_t *title, const wchar_t *label, double *value, double lo, double hi);
+int dlg_import(HWND owner, import_options *o); /* File > Import WAV's options; 1 on Import, 0 on Cancel */
 
 /* audio.c */
 int audio_play(const short *pcm, int n, int sr, int first, int count); /* 0 or -1 */

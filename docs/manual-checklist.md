@@ -1,8 +1,8 @@
 # Editor manual checklist
 
 Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe.exe samples/ba.csv`.
-`tools/ui/check_main.ps1` and `tools/ui/check_edit.ps1` automate part of this and save screenshots in
-`build/ui/`; the items below are the ones that need a person.
+`tools/ui/check_main.ps1`, `tools/ui/check_edit.ps1` and `tools/ui/check_import.ps1` automate part of this and
+save screenshots in `build/ui/`; the items below are the ones that need a person.
 
 ## Display
 
@@ -64,3 +64,23 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 - [ ] Opening a CSV with an unknown column warns and skips it; a bad number is refused with its line and column.
 - [ ] File > Export WAV... writes a file that plays in another program.
 - [ ] Closing, New and Open with unsaved changes ask to save; Cancel keeps the editor open.
+
+## Import WAV
+
+- [ ] File > Import WAV... with unsaved changes asks to save first; Cancel there, or in the file dialog, or in the
+      import dialog, leaves the document as it was.
+- [ ] The import dialog offers Adult male (default), Adult female and Child, a sample rate of 11025 with the note
+      about children's voices, and "Simplify with Optimize afterwards" unticked.
+- [ ] A sample rate outside 5000-20000 Hz is refused with a message and the focus goes back to the field.
+- [ ] While it runs the pointer is the wait cursor and the status bar says "Analyzing…" (noticeable on a file of
+      a minute or more).
+- [ ] The result opens as a new document titled `<wav name>.wav*`; Edit > Undo is disabled (import is not an undo
+      step); File > Save asks for a name and suggests `<wav name>.csv`; closing asks to save.
+- [ ] Errors are shown in a message box and leave the current document untouched: a non-WAV file ("Not a WAV
+      file"), an unsupported format (for example an ADPCM or 64-bit float WAV, whose message names the format), a
+      recording longer than 10 minutes, and a silent one ("No sound found").
+- [ ] Simplify with Optimize afterwards gives tracks with visibly fewer breakpoints.
+- [ ] Listening on the user's recordings in `C:\Users\abart\Desktop\fextr_sept2026\wavs` (adult male, 11025 Hz):
+      `AE`, `IH` and `OW` resynthesize as the same vowels at a similar pitch, without aspiration in their steady
+      parts; `S` and `SH` as the two different hisses; `Z`, `ZH` and `V` as voiced fricatives (V is weak: its
+      frication is quiet and missing in some frames). Every resynthesis peaks at about -1 dBFS without clipping.

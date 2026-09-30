@@ -21,7 +21,8 @@ Date: 2026-09-28. Status: approved in brainstorming, pending written-spec review
 
 - Any support for IPOX's `.PAR` format (text or binary), or a clone of the old `KLATT.DLL` `Klatt()` entry point.
 - Porting any other IPOX program (IPOX.EXE, IRC.EXE, PLAY.EXE, SETUP.EXE).
-- Resynthesis from WAV (see section 9, future work).
+- Resynthesis from WAV in v1: it is designed in `2026-09-29-voice-source-and-wav-import-design.md` (Part B, File >
+  Import WAV…).
 - A command-line synthesis tool.
 
 ## 2. Clean-room rules
@@ -56,11 +57,17 @@ kpe_open/
     wavout.c/.h     WAV writer (no Win32)
     synthrun.c/.h   runs a document through the DLL (no Win32)
     view.c/.h       plot geometry: strip layout, mapping, ticks (no Win32)
+    wavin.c/.h      WAV reader (no Win32)
+    resample.c/.h   sample-rate conversion (no Win32)
+    lpc.c/.h        Burg LPC, polynomial roots, formant candidates (no Win32)
+    pitch.c/.h      YIN pitch and voicing (no Win32)
+    track.c/.h      formant tracking (no Win32)
+    wavimport.c/.h  WAV import pipeline (no Win32)
     app.h, resource.h  state and IDs shared by the GUI files
     main.c          window, menus, accelerators
     strips.c        strips, axes, painting, cursor, selection
     table.c         frame table window
-    dialogs.c       New, Globals, Optimize, About, Parameter reference
+    dialogs.c       New, Globals, Import WAV, Optimize, About, Parameter reference
     audio.c         waveOut playback
     kpe.rc, kpe.manifest
   tests/          console test runner
@@ -254,6 +261,9 @@ void KlattDestroy(klatt_h h);
 - **Parameters > Optimize…:** see 5.6.
 - **File > New…:** duration in ms and the globals (defaults from the table). The document starts as silence
   (AV = AF = AH = AVS = 0) with the frame parameters at their defaults.
+- **File > Import WAV…:** asks to save unsaved changes, then a file dialog, then voice type, target sample rate and
+  "Simplify with Optimize afterwards"; the recording opens as a new unsaved document titled after the WAV. See
+  `2026-09-29-voice-source-and-wav-import-design.md`, section 4.
 - **Help > Parameter reference:** the parameter table, read from the DLL.
 - **Help > About:** a clean-room editor inspired by IPOX's Klatt Parameter Editor; contains no original IPOX code.
 
@@ -323,6 +333,10 @@ void KlattDestroy(klatt_h h);
 - **Editor logic** (`model.c`, `csvio.c`, `optimize.c`): CSV round trip (load, save, load gives identical data);
   every rejection case; optimizer tolerance, grid alignment and endpoints; each edit operation and undo/redo.
 
+- **WAV import:** the WAV reader, resampler, Burg LPC, root finder, pitch and formant tracking as units, and round
+  trips of documents synthesized by the DLL through the import (`tests/test_wavimport.c`); see the import design's
+  section 4.6.
+
 **Manual:** a GUI checklist in `docs/` covering painting, the line tool, selection, the frame table, playback,
 Globals, Optimize, save prompts and DPI scaling. Listening checks are done by the user; sounds the user approves
 are frozen as regression files.
@@ -332,7 +346,4 @@ file, proving the DLL is usable from other programs.
 
 ## 9. Future work (not in v1)
 
-- **Resynthesis:** import a WAV file and convert it to a CSV pair. Starting point: the `fextr` project
-  (`C:\Users\abart\Desktop\fextr_sept2026`), a Python formant tracker with Burg LPC, Kalman smoothing and YIN pitch,
-  plus obstruent-spectrum and Rd/breathiness estimators. The voicing and voice-quality parts can be simplified to
-  the Klatt 1980 parameters. The result would then be cleaned with Parameter optimization.
+- Resynthesis from WAV is no longer future work: see `2026-09-29-voice-source-and-wav-import-design.md`.
