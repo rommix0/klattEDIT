@@ -48,7 +48,7 @@ static inline double antireson_step(antireson *r, double x)
 	return y;
 }
 
-/* Magnitude responses at frequency f, for tests: |A / (1 - B z^-1 - C z^-2)| and |A + B z^-1 + C z^-2|. */
+/* Magnitude responses at frequency f: |A / (1 - B z^-1 - C z^-2)| and |A + B z^-1 + C z^-2|. */
 static inline double reson_gain(const reson *r, double f, double sr)
 {
 	double w = 2.0 * KLATT_PI * f / sr;

@@ -111,9 +111,10 @@ static int lf_setup(double sr, double f0, double rd, lf_shape *o)
 	return 1;
 }
 
-/* Magnitude of the LF flow filters (glottal formant times tilt) at f. */
-static double lf_gain(const lf_shape *o, double f, double sr)
+/* Magnitude of the LF flow filters (glottal formant times tilt, an lf_shape) at f. */
+static double lf_gain(const void *shape, double f, double sr)
 {
+	const lf_shape *o = shape;
 	double w = 2.0 * KLATT_PI * f / sr;
 	double re = 1.0 + o->a1 * cos(w) + o->a2 * cos(2.0 * w);
 	double im = -(o->a1 * sin(w) + o->a2 * sin(2.0 * w));
@@ -127,15 +128,14 @@ static double lf_tilt_db(double sr, double f0, double rd)
 	lf_shape o;
 	if (!lf_setup(sr, f0, rd, &o))
 		return 0.0;
-	return 20.0 * log10(lf_gain(&o, fmin(3000.0, 0.45 * sr), sr) / lf_gain(&o, f0, sr));
+	return 20.0 * log10(lf_gain(&o, fmin(3000.0, K_BYPASS * sr), sr) / lf_gain(&o, f0, sr));
 }
 
-/* The pulse size that gives a neutral vowel the same power for every Rd: a pulse train of size A at f0 through
- * H has power 2*A^2*(f0/sr)^2 * sum over harmonics of |H(k*f0)|^2, with H the radiated LF source (flow filters
- * times the first difference) through the default cascade (F1-F5 = 500/1500/2500/3500/3750 Hz, B1-B5 =
- * 50/70/110/250/200 Hz). Choosing that power to be f0/sr (one unit of energy per period, as a unit impulse
- * through a flat path) makes the level depend on F0 the way the 1980 source's does. */
-static double lf_norm(const lf_shape *o, double sr, double f0)
+/* The sum over the harmonics of f0 below sr/2 of |H(k*f0)|^2, with H a source's magnitude gain(ctx, f, sr) times
+ * the first difference (radiation) and the default cascade (F1-F5 = 500/1500/2500/3500/3750 Hz, B1-B5 =
+ * 50/70/110/250/200 Hz): a neutral vowel's power, up to a factor. Callers pass f0 >= 1 Hz, so the sum has at most
+ * sr/2 terms. */
+static double vowel_sum(double (*gain)(const void *, double, double), const void *ctx, double sr, double f0)
 {
 	static const double nf[5] = { 500.0, 1500.0, 2500.0, 3500.0, 3750.0 };
 	static const double nb[5] = { 50.0, 70.0, 110.0, 250.0, 200.0 };
@@ -143,14 +143,36 @@ static double lf_norm(const lf_shape *o, double sr, double f0)
 	for (int i = 0; i < 5; i++)
 		reson_set(&tract[i], nf[i], nb[i], sr);
 	double sum = 0.0;
-	for (int k = 1; k * f0 < sr / 2.0; k++) {
-		double f = k * f0, d = 2.0 * sin(KLATT_PI * f / sr), h = lf_gain(o, f, sr) * d;
+	for (double k = 1.0; k * f0 < sr / 2.0; k += 1.0) {
+		double f = k * f0, d = 2.0 * sin(KLATT_PI * f / sr), h = gain(ctx, f, sr) * d;
 		for (int i = 0; i < 5; i++)
 			if (nf[i] < K_BYPASS * sr)
 				h *= reson_gain(&tract[i], f, sr);
 		sum += h * h;
 	}
+	return sum;
+}
+
+/* The pulse size that gives a neutral vowel the same power for every Rd: a pulse train of size A at f0 through
+ * H has power 2*A^2*(f0/sr)^2 * vowel_sum. Choosing that power to be f0/sr (one unit of energy per period, as a
+ * unit impulse through a flat path) makes the level depend on F0 the way the 1980 source's does. Evaluated at
+ * max(f0, 1 Hz), so a tiny F0 cannot make the sum unbounded. */
+static double lf_norm(const lf_shape *o, double sr, double f0)
+{
+	f0 = fmax(f0, 1.0);
+	double sum = vowel_sum(lf_gain, o, sr, f0);
 	return sum > 0.0 ? sqrt(sr / (2.0 * f0 * sum)) : 0.0;
+}
+
+/* The 1980 source's filters as Rd sets them: RGP, RGZ and the darkening low-pass (1-p)/(1 - p/z). */
+typedef struct { reson rgp; antireson rgz; double p; } src80;
+
+static double src80_gain(const void *ctx, double f, double sr)
+{
+	const src80 *c = ctx;
+	double w = 2.0 * KLATT_PI * f / sr;
+	double lp = (1.0 - c->p) / sqrt(1.0 - 2.0 * c->p * cos(w) + c->p * c->p);
+	return reson_gain(&c->rgp, f, sr) * antireson_gain(&c->rgz, f, sr) * lp;
 }
 
 /* The pole p of a unity-DC-gain low-pass (1-p)/(1 - p/z) whose level at fh relative to f0 is q_db (< 0) dB:
@@ -317,7 +339,8 @@ static double start_period(struct klatt_synth *s, double f0)
 		 * Rd = 1 to this Rd. Brighter (Rd < 1): RGP widens, to the bandwidth (up to 0.45*SR, found by
 		 * bisection) that gives that change. Darker (Rd > 1): RGP at its default BGP is already as steep
 		 * as it gets, so a one-pole low-pass on the voicing gives the change instead. At Rd = 1 the change
-		 * is exactly 0: RGP keeps BGP and the low-pass is off, so the output is unchanged. */
+		 * is exactly 0: RGP keeps BGP and the low-pass is off, so the output is unchanged. Otherwise the pulse
+		 * is scaled so that the neutral vowel keeps the power it has at Rd = 1. */
 		double fh = fmin(3000.0, K_BYPASS * s->sr), fgp = s->g[KG_FGP], bw = s->g[KG_BGP];
 		double d = lf_tilt_db(s->sr, f0, s->rd) - lf_tilt_db(s->sr, f0, 1.0);
 		s->tp80 = 0.0;
@@ -336,6 +359,12 @@ static double start_period(struct klatt_synth *s, double f0)
 			s->tp80 = tilt_pole(d, s->sr, f0, fh);
 		}
 		reson_set(&s->rgp, fgp, bw, s->sr);
+		if (d != 0.0) {
+			src80 now = { s->rgp, s->rgz, s->tp80 }, ref = { s->rgp, s->rgz, 0.0 };
+			double fe = fmax(f0, 1.0);
+			reson_set(&ref.rgp, fgp, s->g[KG_BGP], s->sr);
+			amp = sqrt(vowel_sum(src80_gain, &ref, s->sr, fe) / vowel_sum(src80_gain, &now, s->sr, fe));
+		}
 		s->oq = 0.5;
 	}
 	/* Diplophonia (Klatt & Klatt 1990, p. 840): every second pulse is delayed by DI% of the closed phase

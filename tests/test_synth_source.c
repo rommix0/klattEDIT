@@ -1,5 +1,5 @@
-/* Voicing-source and noise tests for DLL 1.1: the LF source and Rd, Rd's tilt on the 1980 source, flutter,
- * diplophonia, white noise and the AF/AH ramps. */
+/* Voicing-source and noise tests for DLL 1.1: the LF source and Rd, Rd's tilt and level on the 1980 source, a tiny
+ * F0, flutter, diplophonia, white noise and the AF/AH ramps. */
 #include <stdlib.h>
 #include <string.h>
 #include "test.h"
@@ -72,12 +72,13 @@ static void test_lf_harmonics_follow_the_formula(void)
 	CHECK(hf[0] > hf[1] && hf[1] > hf[2]); /* a larger Rd rolls off more */
 }
 
-static double vowel_rms(int src, double f0, double rd)
+static double vowel_rms(int src, double f0, double rd, double g0)
 {
 	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
 	t_default_globals(g);
 	t_default_frame(f);
 	g[KG_SRC] = src;
+	g[KG_G0] = g0;
 	f[KP_AV] = 60;
 	f[KP_F0] = f0;
 	f[KP_RD] = rd;
@@ -89,11 +90,46 @@ static void test_lf_level(void)
 {
 	static const double rds[] = { 0.3, 0.6, 1.5, 2.0, 2.7 };
 	for (int j = 0; j < 2; j++) {
-		double f0 = j ? 200 : 100, r1 = vowel_rms(1, f0, 1.0);
+		double f0 = j ? 200 : 100, r1 = vowel_rms(1, f0, 1.0, 47);
 		for (int i = 0; i < 5; i++)
-			CHECK_NEAR(20 * log10(vowel_rms(1, f0, rds[i]) / r1), 0, 1.0);
+			CHECK_NEAR(20 * log10(vowel_rms(1, f0, rds[i], 47) / r1), 0, 1.0);
 	}
-	CHECK_NEAR(20 * log10(vowel_rms(1, 100, 1.0) / vowel_rms(0, 100, 1.0)), 0, 0.5); /* calibration */
+	CHECK_NEAR(20 * log10(vowel_rms(1, 100, 1.0, 47) / vowel_rms(0, 100, 1.0, 47)), 0, 0.5); /* calibration */
+}
+
+/* Rd keeps the 1980 source's vowel level too (G0 = 10 leaves 40 dB of headroom, so nothing clips). */
+static void test_rd_keeps_the_1980_level(void)
+{
+	static const double rds[] = { 0.3, 0.6, 1.5, 2.0, 2.7 };
+	for (int j = 0; j < 2; j++) {
+		double f0 = j ? 200 : 100, r1 = vowel_rms(0, f0, 1.0, 10);
+		for (int i = 0; i < 5; i++)
+			CHECK_NEAR(20 * log10(vowel_rms(0, f0, rds[i], 10) / r1), 0, 1.5);
+	}
+}
+
+/* A tiny positive F0 must not make the level normalization's harmonic sum unbounded: every frame returns. */
+static void test_tiny_f0_returns(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	t_default_globals(g);
+	t_default_frame(f);
+	f[KP_AV] = 60;
+	f[KP_F0] = 1e-7;
+	int ok = 1;
+	for (int src = 1; src >= 0; src--) { /* the LF sum, then the 1980 one (Rd != 1 makes it compute) */
+		klatt_h h;
+		g[KG_SRC] = src;
+		f[KP_RD] = src ? 1.0 : 0.5;
+		KlattCreate(g, &h);
+		for (int k = 0; k < 20; k++) {
+			int n = KlattSynthFrame(h, f, buf, 80000);
+			if (n != 55 && n != 56)
+				ok = 0;
+		}
+		KlattDestroy(h);
+	}
+	CHECK(ok);
 }
 
 /* Level of the harmonic nearest 3 kHz relative to H1, from the source through AB. */
@@ -276,6 +312,8 @@ void suite_synth_source(void)
 {
 	test_lf_harmonics_follow_the_formula();
 	test_lf_level();
+	test_rd_keeps_the_1980_level();
+	test_tiny_f0_returns();
 	test_rd_tilts_the_1980_source();
 	test_lf_pitch_is_not_rounded();
 	test_flutter();
