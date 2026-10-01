@@ -62,6 +62,20 @@ long import_frame_centre(int sr, double frame_ms, int k);
  * pulse, so a frame's voicing sounds on for that long. */
 int import_period_frames(double f0);
 
+/* The spike filter (Hampel's) on frame parameter p of frames (nframes x NP), within each run of one class of cls
+ * (CLS_*): a value further than max(3 x 1.4826 x MAD, floor) from the median of the five frames centred on it (that
+ * run's frames only) is replaced by the median, rounded to the parameter's step; the floor is 3 % of the median for
+ * a formant or bandwidth, 3 dB for an amplitude. An amplitude of 0 (off) is neither changed nor counted; a window
+ * with fewer than 3 values, a run shorter than 3 frames and a run's first and last frame are left alone. The values
+ * are read before any is replaced. Sets changed[k] (when not NULL) for every frame changed. Returns 0, or -1 when out
+ * of memory. */
+int import_hampel(double *frames, int nframes, const unsigned char *cls, int p, unsigned char *changed);
+
+/* Which voiced frames get aspiration (on[k] = 1): within each run of CLS_VOICED frames AH switches on when the
+ * smoothed aperiodicity aps reaches 0.25 and off only when it falls below 0.20, and an on-run shorter than 3 frames
+ * is turned off, so a vowel's aspiration does not flicker on for a frame or two. */
+void import_aspiration(const double *aps, const unsigned char *cls, int nframes, unsigned char *on);
+
 /* Analyses x (n samples at sr_in Hz, in [-1, 1)) into *d, a new document (not dirty). info may be NULL; otherwise
  * it receives the per-frame analysis (free it with import_info_free). Returns 0, or -1 with msg set (UTF-8) and
  * *d untouched: too long (over DOC_MAX_DURATION_MS), no sound (no samples, or peak below -60 dBFS), bad arguments,

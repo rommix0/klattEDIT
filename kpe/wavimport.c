@@ -72,6 +72,15 @@
                                * modal vowels read 0.01-0.2 in their middle halves (0.15 left 5-11 frames with AH,
                                * 0.25 none in AE and OW and 3 of 49 in IH's noisy patch); aspiration 5 dB below AV
                                * reads 0.2-0.4, 10 dB below 0.09-0.13 (and stays off) */
+#define AP_ASP_OFF 0.20       /* ...and once on, it stays on until the aperiodicity falls below this: 0.10-0.25 left
+                               * the user's vowels with 14-18 AH spikes, all at the edges of on-runs of 3 frames or
+                               * more (none shorter) */
+#define ASP_MIN_FRAMES 3      /* an aspiration on-run shorter than this inside a voiced run is turned off */
+#define HAMPEL_WIDTH 5        /* the spike filter (import_hampel): a value against the median of this many... */
+#define HAMPEL_K 3.0          /* ...is a spike beyond this many robust standard deviations (1.4826 MAD)... */
+#define HAMPEL_FLOOR_FRAC 0.03 /* ...or at least this fraction of the median (formants, bandwidths)... */
+#define HAMPEL_FLOOR_DB 3.0   /* ...or these dB (amplitudes)... */
+#define HAMPEL_MIN_RUN 3      /* ...in a run of one class at least this long */
 #define AP_SMOOTH 5           /* frames in the aperiodicity's median */
 #define INPUT_PEAK_DB -1.0    /* the input is scaled to peak here (dBFS) before the analysis */
 #define NORM_HEADROOM_DB 24.0 /* a normalization synthesis that overloads is followed by one this far lower */
@@ -715,16 +724,106 @@ static int measure_synth(const kpe_doc *d, spec_ctx *spec, double gain, import_l
 	return 0;
 }
 
-/* AH in a voiced frame of amplitude av: off (0) below the aperiodicity AP_ASP_ON, else av + 10 log10(ap / (1 - ap))
+/* AH in a voiced frame of amplitude av: off (0) unless on (import_aspiration), else av + 10 log10(ap / (1 - ap))
  * (spec 4.3 step 8), ap being YIN's aperiodicity median-smoothed over AP_SMOOTH frames. Checked against the
  * synthesizer: vowels synthesized with AH 15, 10 and 5 dB below AV import with AH 15, 10 and 5 dB below (Rd 1) and
  * 13, 8 and 3 (Rd 2.2) when the threshold is off, so the formula needs no correction factor. */
-static double voiced_ah(double av, double ap)
+static double voiced_ah(double av, double ap, int on)
 {
-	if (ap < AP_ASP_ON)
+	if (!on)
 		return 0;
 	ap = ap > 1 - 1e-4 ? 1 - 1e-4 : ap;
 	return settle(KP_AH, av + 10 * log10(ap / (1 - ap)));
+}
+
+void import_aspiration(const double *aps, const unsigned char *cls, int nframes, unsigned char *on)
+{
+	int state = 0;
+	for (int k = 0; k < nframes; k++) {
+		state = cls[k] == CLS_VOICED && (state ? aps[k] >= AP_ASP_OFF : aps[k] >= AP_ASP_ON);
+		on[k] = (unsigned char)state;
+	}
+	for (int k = 0, e; k < nframes; k = e) { /* on-runs shorter than ASP_MIN_FRAMES off */
+		for (e = k + 1; e < nframes && on[e] == on[k]; e++)
+			;
+		if (on[k] && e - k < ASP_MIN_FRAMES)
+			memset(on + k, 0, e - k);
+	}
+}
+
+/* A run's first and last frame are left alone: their window reaches one side only, so the start of an onset or a
+ * decay looks like a spike there (a /s/'s vowel offset rose 7 dB, and the resynthesis's level error in the frames
+ * after it from 5-10 to 11-16 dB). */
+/* F1-F4 smoothed with Optimize's default widths (opt_smooth: a 3-frame median, then a Gaussian) within each run of
+ * frames of one class, never across a class boundary. Sets moved[k] for every frame whose formants changed. Returns
+ * 0, or -1 when out of memory. */
+static int smooth_formants(double *frames, int nframes, const unsigned char *cls, unsigned char *moved)
+{
+	double *v = malloc(sizeof(double) * nframes);
+	if (!v)
+		return -1;
+	for (int p = KP_F1; p <= KP_F4; p++)
+		for (int a = 0, b; a < nframes; a = b) {
+			for (b = a + 1; b < nframes && cls[b] == cls[a]; b++)
+				;
+			for (int k = a; k < b; k++)
+				v[k - a] = frames[(size_t)k * NP + p];
+			if (opt_smooth(v, b - a, IMPORT_FRAME_MS, opt_smooth_default(p), 0) != 0) {
+				free(v);
+				return -1;
+			}
+			for (int k = a; k < b; k++) {
+				double s = settle(p, v[k - a]);
+				if (s != frames[(size_t)k * NP + p]) {
+					frames[(size_t)k * NP + p] = s;
+					moved[k] = 1;
+				}
+			}
+		}
+	free(v);
+	return 0;
+}
+
+int import_hampel(double *frames, int nframes, const unsigned char *cls, int p, unsigned char *changed)
+{
+	int amp = opt_smooth_runs(p);
+	double *v = malloc(sizeof(double) * nframes);
+	if (!v)
+		return -1;
+	for (int k = 0; k < nframes; k++)
+		v[k] = frames[(size_t)k * NP + p];
+	for (int a = 0; a < nframes;) {
+		int b = a;
+		while (b < nframes && cls[b] == cls[a])
+			b++;
+		for (int k = a + 1; b - a >= HAMPEL_MIN_RUN && k < b - 1; k++) {
+			double win[HAMPEL_WIDTH], dev[HAMPEL_WIDTH];
+			int m = 0;
+			if (amp && v[k] == 0)
+				continue;
+			for (int j = k - HAMPEL_WIDTH / 2; j <= k + HAMPEL_WIDTH / 2; j++)
+				if (j >= a && j < b && !(amp && v[j] == 0))
+					win[m++] = v[j];
+			if (m < 3)
+				continue;
+			qsort(win, m, sizeof(double), cmp_double);
+			double med = m & 1 ? win[m / 2] : 0.5 * (win[m / 2 - 1] + win[m / 2]);
+			for (int i = 0; i < m; i++)
+				dev[i] = fabs(win[i] - med);
+			qsort(dev, m, sizeof(double), cmp_double);
+			double mad = m & 1 ? dev[m / 2] : 0.5 * (dev[m / 2 - 1] + dev[m / 2]);
+			double least = amp ? HAMPEL_FLOOR_DB : HAMPEL_FLOOR_FRAC * med;
+			double lim = HAMPEL_K * 1.4826 * mad > least ? HAMPEL_K * 1.4826 * mad : least;
+			if (fabs(v[k] - med) > lim) {
+				frames[(size_t)k * NP + p] = settle(p, med);
+				if (changed)
+					changed[k] = 1;
+			}
+		}
+		a = b;
+	}
+	free(v);
+	return 0;
 }
 
 /* Amplitude p after a calibration pass: v moved by diff (the WAV's level less the synthesis's, dB), at most
@@ -1090,12 +1189,13 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	double *hf = malloc(sizeof(double) * nframes), *upper = malloc(sizeof(double) * nframes);
 	double *lowrel = malloc(sizeof(double) * nframes), *aps = malloc(sizeof(double) * nframes);
 	double *start = malloc(sizeof(double) * nframes); /* AV's (voiced classes) or AH's (aspiration) start value */
-	unsigned char *fric = malloc(nframes), *conf = calloc((size_t)CAND_MAX * nframes, 1);
+	unsigned char *fric = malloc(nframes), *conf = calloc((size_t)CAND_MAX * nframes, 1), *asp = malloc(nframes);
+	unsigned char *moved = calloc(nframes, 1); /* frames whose formants the spike filter changed */
 	double *vb = NULL, *rel = malloc(sizeof(double) * nframes);
 	kpe_doc tmp = { 0 };
 	int have_tmp = 0;
 	if (!centre || !f0 || !ap || !voiced || !quiet || !cls || !cands || !ncand || !ftr || !btr || !lw || !ls ||
-	    !frames || !level || !hf || !upper || !lowrel || !aps || !start || !fric || !conf || !rel ||
+	    !frames || !level || !hf || !upper || !lowrel || !aps || !start || !fric || !conf || !rel || !asp || !moved ||
 	    spec_init(&spec, sr) != 0 || !(w = malloc(sizeof(double) * spec.len))) {
 		fail(msg, msglen, "Out of memory.");
 		goto done;
@@ -1184,6 +1284,7 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 		else
 			cls[k] = voiced[k] ? (fric[k] ? CLS_VOICED_FRIC : CLS_VOICED) : (fric[k] ? CLS_FRIC : CLS_ASPIRATION);
 	}
+	import_aspiration(aps, cls, nframes, asp);
 	/* the frames: F0 held across unvoiced frames (interpolated between voiced ones), formants and bandwidths */
 	double f0_default = sqrt(vt->f0_min * vt->f0_max);
 	for (int k = 0; k < nframes; k++) {
@@ -1260,7 +1361,7 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 			if (c == CLS_VOICED || c == CLS_VOICED_FRIC)
 				v[KP_AV] = start[k] = settle(KP_AV, REF_LEVEL + lw[k].low - rv.low);
 			if (c == CLS_VOICED)
-				v[KP_AH] = voiced_ah(v[KP_AV], aps[k]);
+				v[KP_AH] = voiced_ah(v[KP_AV], aps[k], asp[k]);
 			if (c == CLS_ASPIRATION)
 				v[KP_AH] = start[k] = settle(KP_AH, REF_LEVEL + lw[k].total - rh.total);
 		}
@@ -1274,8 +1375,17 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	int corrected = correct_formants(gc, frames, nframes, cls, ftr, &spec, ps->fcorr_passes);
 	if (corrected < 0)
 		goto oom;
-	for (int k = 0; corrected && k < nframes; k++) { /* the WAV's levels in the corrected formants' bands */
+	/* spikes in the formants and bandwidths filtered (spec 5.3), then F1-F4 smoothed, so that Rd and the calibration
+	 * see the result */
+	for (int p = KP_F1; p <= KP_B3; p++)
+		if ((p <= KP_F4 || p >= KP_B1) && import_hampel(frames, nframes, cls, p, moved) != 0)
+			goto oom;
+	if (smooth_formants(frames, nframes, cls, moved) != 0)
+		goto oom;
+	for (int k = 0; k < nframes; k++) { /* the WAV's levels in the corrected (or filtered) formants' bands */
 		double f[6];
+		if (!corrected && !moved[k])
+			continue;
 		formants_of(frames + (size_t)k * NP, g, f);
 		measure(&spec, x, n, centre[k], f, &lw[k]);
 	}
@@ -1303,7 +1413,7 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 			if (c == CLS_VOICED || c == CLS_VOICED_FRIC)
 				v[KP_AV] = cal_step(KP_AV, v[KP_AV], start[k], lw[k].low - ls[k].low);
 			if (c == CLS_VOICED) /* in voiced fricatives the aperiodic energy is the frication's */
-				v[KP_AH] = voiced_ah(v[KP_AV], aps[k]);
+				v[KP_AH] = voiced_ah(v[KP_AV], aps[k], asp[k]);
 			if (c == CLS_ASPIRATION)
 				v[KP_AH] = cal_step(KP_AH, v[KP_AH], start[k], lw[k].total - ls[k].total);
 			if (c != CLS_FRIC && c != CLS_VOICED_FRIC)
@@ -1345,6 +1455,11 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 			fric_set(v, xj);
 		}
 	}
+	/* spikes in the amplitudes filtered (spec 5.3), before the verification */
+	static const int amps[] = { KP_AV, KP_AF, KP_AH, KP_A2, KP_A3, KP_A4, KP_A5, KP_A6 };
+	for (size_t i = 0; i < sizeof amps / sizeof amps[0]; i++)
+		if (import_hampel(frames, nframes, cls, amps[i], NULL) != 0)
+			goto oom;
 	/* verification: a non-silent frame whose synthesis is more than CAL_LOUD_DB louder than the WAV is lowered by the
 	 * excess (a burst where the last pass overshot). The WAV's level is its loudest over the frame and the frames of
 	 * the glottal period before it: the DLL latches AV at each pulse, so a frame's voicing sounds on for up to a
@@ -1464,6 +1579,8 @@ done:
 	free(vb);
 	free(rel);
 	free(conf);
+	free(asp);
+	free(moved);
 	return rc;
 }
 
