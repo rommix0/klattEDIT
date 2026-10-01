@@ -509,7 +509,7 @@ static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 			o->sr = (int)lround(sr);
 			HWND quality = GetDlgItem(dlg, IDC_QUALITY);
 			o->quality = (int)SendMessageW(quality, CB_GETITEMDATA, SendMessageW(quality, CB_GETCURSEL, 0, 0), 0);
-			o->simplify =IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
+			o->simplify = IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
 			EndDialog(dlg, 1);
 			return TRUE;
 		}
