@@ -49,6 +49,8 @@ typedef struct {
 static const limits spec_limits = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN },
 	{ LIM_F_P90, LIM_F_P90, LIM_F_P90 }, LIM_AV_DB, LIM_BAND_DB, LIM_CLASS, LIM_LOUDER_DB, 0 };
 
+static int quality = IMPORT_NORMAL; /* the preset the round trips import with */
+
 typedef struct {
 	double ms, v;
 } pt;
@@ -233,7 +235,7 @@ static void round_trip_lim(const char *name, const kpe_doc *src, int voice, doub
 	}
 	t_default_globals(gdef);
 	double in_db = INPUT_PEAK_DB - 20 * log10(xpeak); /* the import's input scaling */
-	import_options o = { voice, s.sr, 0 };
+	import_options o = { voice, s.sr, 0, quality };
 	kpe_doc d;
 	import_info info;
 	char msg[256];
@@ -544,6 +546,45 @@ static void test_round_trips_sr(void)
 	doc_free(&d);
 }
 
+/* Fast's known limit (spec 4.6): with one formant correction pass the female vowels' F1 keeps more of LPC's harmonic
+ * bias (90th percentile 11.4 %). */
+static const limits female_fast = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { 0.12, LIM_F_P90, LIM_F_P90 },
+	LIM_AV_DB, LIM_BAND_DB, LIM_CLASS, LIM_LOUDER_DB, 0 };
+
+/* The presets on the corpus at 11025 Hz (spec 3.3): Best is held to the spec's limits, Fast to what it meets where it
+ * misses one (the import spec's known limits for Fast). */
+static void test_presets(void)
+{
+	static const struct {
+		const char *name;
+		void (*make)(kpe_doc *);
+		int voice;
+		const limits *fast;
+	} corpus[] = {
+		{ "ba.csv", ba_doc, VOICE_MALE, &spec_limits },
+		{ "female vowels", female_vowels, VOICE_FEMALE, &female_fast },
+		{ "/asa/", asa_doc, VOICE_MALE, &spec_limits },
+		{ "/aza/", aza_doc, VOICE_MALE, &spec_limits },
+		{ "weak /aza/", weak_z_doc, VOICE_MALE, &spec_limits },
+		{ "/asha/", sh_doc, VOICE_MALE, &spec_limits },
+		{ "/ava/", v_doc, VOICE_MALE, &spec_limits },
+		{ "Rd sweep 0.4-2.5", rd_sweep, VOICE_MALE, &spec_limits },
+	};
+	static const struct { int q; const char *name; } presets[] = { { IMPORT_FAST, "Fast" }, { IMPORT_BEST, "Best" } };
+	kpe_doc d;
+	for (int i = 0; i < 2; i++) {
+		quality = presets[i].q;
+		for (size_t j = 0; j < sizeof corpus / sizeof corpus[0]; j++) {
+			char full[96];
+			snprintf(full, sizeof full, "%s: %s", presets[i].name, corpus[j].name);
+			corpus[j].make(&d);
+			round_trip_lim(full, &d, corpus[j].voice, 0, quality == IMPORT_FAST ? corpus[j].fast : &spec_limits);
+			doc_free(&d);
+		}
+	}
+	quality = IMPORT_NORMAL;
+}
+
 /* A steady /a/ at AV 60 with aspiration ah (0: none) and Rd rd, imported: returns the median AH over its steady
  * frames and counts those with AH > 0. */
 static double aspiration_of(double ah, double rd, int *with_ah, int *n)
@@ -561,7 +602,7 @@ static double aspiration_of(double ah, double rd, int *with_ah, int *n)
 	synth_result s;
 	CHECK(synth_doc(&src, &s) == 0);
 	double *x = pcm_to_double(&s), v[200], med = -1;
-	import_options o = { VOICE_MALE, s.sr, 0 };
+	import_options o = { VOICE_MALE, s.sr, 0, IMPORT_NORMAL };
 	char msg[256];
 	*with_ah = *n = 0;
 	if (import_samples(x, s.n, s.sr, &o, &d, NULL, msg, sizeof msg) == 0) {
@@ -603,7 +644,7 @@ static void test_normalization(void)
 	double *x = pcm_to_double(&s), peak = m_peak(s.pcm, s.n) / 32768;
 	for (int i = 0; i < s.n; i++)
 		x[i] = x[i] / peak * (32767.0 / 32768); /* full scale */
-	import_options o = { VOICE_MALE, s.sr, 0 };
+	import_options o = { VOICE_MALE, s.sr, 0, IMPORT_NORMAL };
 	char msg[256];
 	int rc = import_samples(x, s.n, s.sr, &o, &d, NULL, msg, sizeof msg);
 	CHECK(rc == 0);
@@ -640,7 +681,7 @@ static void test_rd_runs(void)
 	synth_result s;
 	CHECK(synth_doc(&src, &s) == 0);
 	double *x = pcm_to_double(&s);
-	import_options o = { VOICE_MALE, s.sr, 0 };
+	import_options o = { VOICE_MALE, s.sr, 0, IMPORT_NORMAL };
 	char msg[256];
 	import_info info;
 	int rc = import_samples(x, s.n, s.sr, &o, &d, &info, msg, sizeof msg);
@@ -670,7 +711,7 @@ static void test_result_document(void)
 	synth_result s;
 	CHECK(synth_doc(&src, &s) == 0);
 	double *x = pcm_to_double(&s);
-	import_options o = { VOICE_MALE, 11025, 0 };
+	import_options o = { VOICE_MALE, 11025, 0, IMPORT_NORMAL };
 	char msg[256];
 	int rc = import_samples(x, s.n, s.sr, &o, &d, NULL, msg, sizeof msg);
 	CHECK(rc == 0);
@@ -756,7 +797,7 @@ static void test_refusals(void)
 {
 	kpe_doc d;
 	char msg[256];
-	import_options o = { VOICE_MALE, 11025, 0 };
+	import_options o = { VOICE_MALE, 11025, 0, IMPORT_NORMAL };
 	d.nframes = -12345; /* untouched on failure */
 
 	long n = 11025; /* -66 dBFS: silent */
@@ -792,23 +833,18 @@ static void test_refusals(void)
 	CHECK(d.nframes == -12345);
 }
 
-/* 60 s of speech-like sound (ba.csv 75 times) as a WAV file, imported and timed. */
-static void test_speed(void)
+/* unit repeated `times` times (60 s) as a WAV file, imported with voice and quality and timed: within 5 s. */
+static void speed_test(const char *what, const kpe_doc *unit, int times, int voice, int quality)
 {
-	kpe_doc ba, big;
-	csv_report r;
-	if (csv_load(L"../../samples/ba.csv", &ba, &r) != 0) {
-		CHECK(0);
-		return;
-	}
-	double *frames = malloc(sizeof(double) * NP * ba.nframes * 75);
-	for (int i = 0; i < 75; i++)
-		memcpy(frames + (size_t)i * NP * ba.nframes, ba.frames, sizeof(double) * NP * ba.nframes);
-	CHECK(doc_init_from(&big, ba.globals, ba.nframes * 75, frames) == 0);
+	kpe_doc big;
+	double *frames = malloc(sizeof(double) * NP * unit->nframes * times);
+	for (int i = 0; i < times; i++)
+		memcpy(frames + (size_t)i * NP * unit->nframes, unit->frames, sizeof(double) * NP * unit->nframes);
+	CHECK(doc_init_from(&big, unit->globals, unit->nframes * times, frames) == 0);
 	synth_result s;
 	CHECK(synth_doc(&big, &s) == 0);
 	CHECK(wav_write(L"speed.wav", s.pcm, s.n, s.sr) == 0);
-	import_options o = { VOICE_MALE, 11025, 0 };
+	import_options o = { voice, 11025, 0, quality };
 	kpe_doc d;
 	import_info info;
 	char msg[256];
@@ -816,8 +852,8 @@ static void test_speed(void)
 	int rc = import_wav(L"speed.wav", &o, &d, &info, msg, sizeof msg);
 	double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
 	CHECK(rc == 0);
-	printf("  speed: %.1f s of sound imported in %.2f s (analysis %.2f, Rd %.2f in %d frames, calibration %.2f)\n",
-		s.n / (double)s.sr, secs, info.seconds[0], info.seconds[1], info.rd_frames, info.seconds[2]);
+	printf("  speed, %s: %.1f s of sound imported in %.2f s (analysis %.2f, Rd %.2f in %d frames, calibration %.2f)\n",
+		what, s.n / (double)s.sr, secs, info.seconds[0], info.seconds[1], info.rd_frames, info.seconds[2]);
 	CHECK(secs <= 5.0);
 	if (rc == 0) {
 		import_info_free(&info);
@@ -825,7 +861,23 @@ static void test_speed(void)
 	}
 	synth_result_free(&s);
 	doc_free(&big);
-	doc_free(&ba);
+}
+
+/* 60 s of speech-like sound (ba.csv 75 times) with Normal, and 60 s of a high voice (the female vowels 50 times,
+ * median F0 about 220 Hz, so the formant correction runs) with Fast. */
+static void test_speed(void)
+{
+	kpe_doc unit;
+	csv_report r;
+	if (csv_load(L"../../samples/ba.csv", &unit, &r) != 0) {
+		CHECK(0);
+		return;
+	}
+	speed_test("Normal, male", &unit, 75, VOICE_MALE, IMPORT_NORMAL);
+	doc_free(&unit);
+	female_vowels(&unit);
+	speed_test("Fast, high voice", &unit, 50, VOICE_FEMALE, IMPORT_FAST);
+	doc_free(&unit);
 }
 
 void suite_wavimport(void)
@@ -834,6 +886,7 @@ void suite_wavimport(void)
 	test_result_document();
 	test_round_trips();
 	test_round_trips_sr();
+	test_presets();
 	test_rd_runs();
 	test_aspiration();
 	test_normalization();

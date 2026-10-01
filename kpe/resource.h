@@ -62,6 +62,7 @@
 #define IDC_VOICE         2401
 #define IDC_TARGET_SR     2402
 #define IDC_SIMPLIFY      2403
+#define IDC_QUALITY       2404
 
 #define IDC_FIELD_BASE    3000 /* generated global fields: IDC_FIELD_BASE + global index */
 #define IDC_CHECK_BASE    4000 /* panel checkboxes: IDC_CHECK_BASE + parameter index */

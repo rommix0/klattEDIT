@@ -37,7 +37,7 @@ static int imported(const kpe_doc *src, int voice, short *buf, int n, int max)
 	double *x = malloc(sizeof(double) * s.n);
 	for (int i = 0; i < s.n; i++)
 		x[i] = s.pcm[i] / 32768.0;
-	import_options o = { voice, s.sr, 0 };
+	import_options o = { voice, s.sr, 0, IMPORT_NORMAL };
 	int rc = import_samples(x, s.n, s.sr, &o, &d, NULL, msg, sizeof msg);
 	CHECK(rc == 0);
 	if (rc == 0) {

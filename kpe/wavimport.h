@@ -9,10 +9,15 @@
 
 enum { VOICE_MALE, VOICE_FEMALE, VOICE_CHILD, VOICE_COUNT };
 
+/* Analysis presets (spec 3.3 of the speed/crop/smoothing design): how often Rd is fitted and how many formant
+ * correction and calibration passes run. Normal is 0, so a zeroed import_options analyses as before the presets. */
+enum { IMPORT_NORMAL, IMPORT_FAST, IMPORT_BEST, IMPORT_QUALITY_COUNT };
+
 typedef struct {
 	int voice;     /* VOICE_* */
 	int sr;        /* target sample rate: the document's SR */
 	int simplify;  /* run Optimize on every track afterwards (default smoothing, every frame grid, default tolerances) */
+	int quality;   /* IMPORT_FAST, IMPORT_NORMAL or IMPORT_BEST */
 } import_options;
 
 /* The voice types' F0 search ranges and reference F1-F4 (spec 4.4). */

@@ -333,7 +333,7 @@ static void cmd_open(void)
  * current document stays as it was. */
 static void cmd_import_wav(void)
 {
-	static import_options o = { VOICE_MALE, 11025, 0 }; /* remembered for the next import */
+	static import_options o = { VOICE_MALE, 11025, 0, IMPORT_NORMAL }; /* remembered for the next import */
 	wchar_t path[MAX_PATH] = L"";
 	if (!confirm_discard() || !ask_path(0, L"WAV files (*.wav)\0*.wav\0All files (*.*)\0*.*\0", L"wav", path) ||
 	    !dlg_import(app.main, &o))

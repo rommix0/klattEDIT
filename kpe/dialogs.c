@@ -467,6 +467,9 @@ void dlg_optimize(HWND owner)
 
 /* ---- Import WAV ---- */
 
+static const struct { const wchar_t *name; int q; } qualities[] = {
+	{ L"Fast", IMPORT_FAST }, { L"Normal", IMPORT_NORMAL }, { L"Best", IMPORT_BEST } };
+
 static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 {
 	static import_options *o;
@@ -480,6 +483,13 @@ static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 			SendMessageW(voice, CB_ADDSTRING, 0, (LPARAM)t);
 		}
 		SendMessageW(voice, CB_SETCURSEL, o->voice, 0);
+		HWND quality = GetDlgItem(dlg, IDC_QUALITY);
+		for (int i = 0; i < 3; i++) {
+			int at = (int)SendMessageW(quality, CB_ADDSTRING, 0, (LPARAM)qualities[i].name);
+			SendMessageW(quality, CB_SETITEMDATA, at, qualities[i].q);
+			if (qualities[i].q == o->quality)
+				SendMessageW(quality, CB_SETCURSEL, at, 0);
+		}
 		set_number(dlg, IDC_TARGET_SR, o->sr);
 		CheckDlgButton(dlg, IDC_SIMPLIFY, o->simplify ? BST_CHECKED : BST_UNCHECKED);
 		return TRUE;
@@ -497,7 +507,9 @@ static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 			}
 			o->voice = (int)SendMessageW(GetDlgItem(dlg, IDC_VOICE), CB_GETCURSEL, 0, 0);
 			o->sr = (int)lround(sr);
-			o->simplify = IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
+			HWND quality = GetDlgItem(dlg, IDC_QUALITY);
+			o->quality = (int)SendMessageW(quality, CB_GETITEMDATA, SendMessageW(quality, CB_GETCURSEL, 0, 0), 0);
+			o->simplify =IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
 			EndDialog(dlg, 1);
 			return TRUE;
 		}

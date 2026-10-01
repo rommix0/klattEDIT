@@ -93,8 +93,13 @@
 
 #define RD_STEP 12            /* Rd is fitted on every RD_STEP-th voiced frame (60 ms) and interpolated between: the
                                * candidate syntheses are the import's main cost (every 4th frame took 7.7 s of a
-                               * 60 s import; every 12th 1.6 s, with the same accuracy on the test corpus) */
-#define RD_TOL 0.1            /* golden-section search stops when the Rd bracket is this narrow: the midpoint is
+                               * 60 s import; every 12th 1.6 s, with the same accuracy on the test corpus)... */
+#define RD_EDGE 3             /* ...and only on a frame whose RD_EDGE neighbours on either side are voiced too, so the
+                               * 25 ms window lies in the vowel: fitting every 4th frame (Best), fits whose window
+                               * reached a /z/'s frication read Rd 0.77-0.86 for 1.0, and the fricative bands' 90th
+                               * percentile error rose from 2.6 to 4.0 dB (2.8 with this rule); at every 12th frame
+                               * the rule moved the corpus by little (the weak /z/ at 16000 Hz: bands 4.4 -> 2.4 dB) */
+#define RD_TOL 0.1           /* golden-section search stops when the Rd bracket is this narrow: the midpoint is
                                * then within 0.05 (Optimize's default Rd tolerance) */
 #define RD_NEAR 0.5           /* a fit in the same voiced run as the previous one first searches this far on either
                                * side of it (the whole range again if the minimum lands on that edge): 7 syntheses
@@ -107,6 +112,19 @@
                                * grew from 0.09 to 0.38 (the source is not steady yet) */
 #define RD_BAND_MAX_HZ 5000.0 /* comparison band: F0 to min(5 F0, this) (fextr's Method B) */
 #define RD_MEDIAN 3           /* fitted Rd values are median-smoothed over this many fits */
+
+/* The analysis presets (IMPORT_*): Normal is the analysis above (RD_STEP, FCORR_PASSES, CAL_PASSES); Best fits Rd
+ * on every 4th voiced frame; Fast fits it on every 24th and runs one formant correction pass and one calibration
+ * correction: a 60 s high voice took 6.9 s with Normal's numbers and 4.4 s with these on the 32-bit build, and the
+ * female vowels' F1 90th-percentile error rose from 9.4 to 11.4 % (the import spec's known limits list it). */
+typedef struct {
+	int rd_step, fcorr_passes, cal_passes;
+} preset;
+static const preset presets[IMPORT_QUALITY_COUNT] = {
+	[IMPORT_NORMAL] = { RD_STEP, FCORR_PASSES, CAL_PASSES },
+	[IMPORT_FAST] = { 24, 1, 1 },
+	[IMPORT_BEST] = { 4, FCORR_PASSES, CAL_PASSES },
+};
 
 static const voice_info voices[VOICE_COUNT] = {
 	{ "Adult male", 60, 250, { 500, 1500, 2500, 3500 } },
@@ -485,10 +503,11 @@ static int cmp_double(const void *a, const void *b)
 	return x < y ? -1 : x > y;
 }
 
-/* Rd for every frame of fr (nframes x NP): fitted on every RD_STEP-th CLS_VOICED frame, median-smoothed over
- * RD_MEDIAN fits, interpolated between fits within a run of voiced frames, and held (the last value) elsewhere. */
+/* Rd for every frame of fr (nframes x NP): fitted on every step-th CLS_VOICED frame (at least RD_EDGE frames from
+ * another class), median-smoothed over RD_MEDIAN fits, interpolated between fits within a run of voiced frames, and
+ * held (the last value) elsewhere. */
 static int fit_rd_track(const double *x, long n, int sr, const unsigned char *cls, int nframes, double *fr,
-	spec_ctx *spec, int *fitted)
+	spec_ctx *spec, int step, int *fitted)
 {
 	rd_ctx r;
 	memset(&r, 0, sizeof r);
@@ -524,7 +543,10 @@ static int fit_rd_track(const double *x, long n, int sr, const unsigned char *cl
 		goto done;
 	int nfit = 0;
 	for (int k = 0; k < nframes; k++) {
-		if (cls[k] != CLS_VOICED || k % RD_STEP != 0)
+		int steady = k % step == 0;
+		for (int j = k - RD_EDGE; j <= k + RD_EDGE && steady; j++)
+			steady = j >= 0 && j < nframes && cls[j] == CLS_VOICED;
+		if (!steady)
 			continue;
 		double prior = 0; /* the previous fit, if no unvoiced frame lies between */
 		if (nfit > 0) {
@@ -851,9 +873,10 @@ static void lower_frame(double *v, double db)
  * one (a female /u/'s F1 of 370 Hz at F0 215 Hz read 420). The synthesizer's output analysed the same way has the
  * same bias, so each pass synthesizes the voicing of the document, measures F1-F3 exactly as on the WAV (the
  * candidate nearest the current value), and moves each formant by the WAV's measurement less the synthesis's.
- * Returns 1 when it corrected the formants, 0 for a lower voice (nothing done), -1 when out of memory. */
+ * Runs `passes` passes. Returns 1 when it corrected the formants, 0 for a lower voice (nothing done), -1 when out of
+ * memory. */
 static int correct_formants(const double *g, double *frames, int nframes, const unsigned char *cls,
-	const double *ftr, spec_ctx *spec)
+	const double *ftr, spec_ctx *spec, int passes)
 {
 	/* only for a high voice: the median F0 of the voiced frames */
 	double *fr = malloc(sizeof(double) * NP * nframes), *w = malloc(sizeof(double) * spec->len), *x = NULL;
@@ -873,7 +896,7 @@ static int correct_formants(const double *g, double *frames, int nframes, const 
 		return 0;
 	}
 	int sr = spec->sr, order = lpc_order(sr);
-	for (int pass = 0; pass < FCORR_PASSES; pass++) {
+	for (int pass = 0; pass < passes; pass++) {
 		/* the voicing alone: the analysis sees the same source and tract as in the WAV's voiced frames */
 		for (int k = 0; k < nframes; k++) {
 			double *v = fr + (size_t)k * NP;
@@ -937,8 +960,9 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	if (msglen)
 		msg[0] = 0;
 	const voice_info *vt = o ? import_voice(o->voice) : NULL;
-	if (!vt || !x0 || n0 < 0 || sr_in <= 0 || !sr_ok(o->sr))
+	if (!vt || !x0 || n0 < 0 || sr_in <= 0 || !sr_ok(o->sr) || o->quality < 0 || o->quality >= IMPORT_QUALITY_COUNT)
 		return fail(msg, msglen, "Cannot import: bad arguments.");
+	const preset *ps = &presets[o->quality];
 	if (n0 == 0)
 		return fail(msg, msglen, "No sound found (the recording is empty).");
 	if (n0 * 1000.0 / sr_in > DOC_MAX_DURATION_MS)
@@ -1163,7 +1187,7 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	int over;
 	memcpy(gc, g, sizeof gc);
 	gc[KG_G0] -= CAL_HEADROOM_DB;
-	int corrected = correct_formants(gc, frames, nframes, cls, ftr, &spec);
+	int corrected = correct_formants(gc, frames, nframes, cls, ftr, &spec, ps->fcorr_passes);
 	if (corrected < 0)
 		goto oom;
 	for (int k = 0; corrected && k < nframes; k++) { /* the WAV's levels in the corrected formants' bands */
@@ -1172,7 +1196,7 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 		measure(&spec, x, n, centre[k], f, &lw[k]);
 	}
 	int fitted = 0;
-	if (fit_rd_track(x, n, sr, cls, nframes, frames, &spec, &fitted) != 0)
+	if (fit_rd_track(x, n, sr, cls, nframes, frames, &spec, ps->rd_step, &fitted) != 0)
 		goto oom;
 	clock_t t_cal = clock();
 
@@ -1186,7 +1210,7 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	 * aspiration is the frication, and AF and A2-A6 are fitted to its five band powers with a model of the parallel
 	 * resonators (fric_model); later passes scale each band's target by the WAV's frication over the synthesis's
 	 * and fit again */
-	for (int pass = 0; pass <= CAL_PASSES; pass++) {
+	for (int pass = 0; pass <= ps->cal_passes; pass++) {
 		if (measure_synth(&tmp, &spec, cal_gain, ls, &pdb, &over) != 0)
 			goto oom;
 		for (int k = 0; k < nframes; k++) {
