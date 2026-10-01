@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <wchar.h>
 #include "model.h"
+#include "wavin.h"
 
 enum { VOICE_MALE, VOICE_FEMALE, VOICE_CHILD, VOICE_COUNT };
 
@@ -83,7 +84,12 @@ void import_aspiration(const double *aps, const unsigned char *cls, int nframes,
 int import_samples(const double *x, long n, int sr_in, const import_options *o, kpe_doc *d, import_info *info,
 	char *msg, size_t msglen);
 
-/* Reads the WAV file (wavin.h) and imports it. Same return and msg as import_samples, plus the reader's refusals. */
+/* Reads the WAV file (wavin.h) for an import: refused, like the reader's own refusals, when it is longer than
+ * DOC_MAX_DURATION_MS. Returns 0, or -1 with msg set (UTF-8) and *wd zeroed. Free *wd with wav_data_free. The
+ * Import WAV dialog reads the file first and imports the part of it selected (import_samples). */
+int import_read(const wchar_t *path, wav_data *wd, char *msg, size_t msglen);
+
+/* Reads the WAV file and imports all of it. Same return and msg as import_samples, plus import_read's refusals. */
 int import_wav(const wchar_t *path, const import_options *o, kpe_doc *d, import_info *info, char *msg,
 	size_t msglen);
 

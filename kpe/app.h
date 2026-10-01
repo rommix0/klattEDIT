@@ -70,7 +70,8 @@ int dlg_globals(HWND owner, double *globals, double *duration_ms); /* duration_m
 void dlg_optimize(HWND owner);
 void dlg_paramref(HWND owner);
 int dlg_asknum(HWND owner, const wchar_t *title, const wchar_t *label, double *value, double lo, double hi);
-int dlg_import(HWND owner, import_options *o); /* File > Import WAV's options; 1 on Import, 0 on Cancel */
+/* File > Import WAV's range of wav (*first..*end, samples) and options; 1 on Import, 0 on Cancel */
+int dlg_import(HWND owner, import_options *o, const wav_data *wav, long *first, long *end);
 
 /* audio.c */
 int audio_play(const short *pcm, int n, int sr, int first, int count); /* 0 or -1 */

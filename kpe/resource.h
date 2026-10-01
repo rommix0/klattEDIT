@@ -63,6 +63,10 @@
 #define IDC_TARGET_SR     2402
 #define IDC_SIMPLIFY      2403
 #define IDC_QUALITY       2404
+#define IDC_WAVE          2405
+#define IDC_RANGE_START   2406
+#define IDC_RANGE_END     2407
+#define IDC_RANGE_PLAY    2408
 
 #define IDC_FIELD_BASE    3000 /* generated global fields: IDC_FIELD_BASE + global index */
 #define IDC_CHECK_BASE    4000 /* panel checkboxes: IDC_CHECK_BASE + parameter index */

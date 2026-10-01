@@ -1584,17 +1584,24 @@ done:
 	return rc;
 }
 
+int import_read(const wchar_t *path, wav_data *wd, char *msg, size_t msglen)
+{
+	if (wav_read(path, DOC_MAX_DURATION_MS / 1000, wd, msg, msglen) != 0) {
+		if (msglen && strstr(msg, "too long"))
+			snprintf(msg, msglen, "The recording is longer than 10 minutes.");
+		return -1;
+	}
+	return 0;
+}
+
 int import_wav(const wchar_t *path, const import_options *o, kpe_doc *d, import_info *info, char *msg,
 	size_t msglen)
 {
 	wav_data wd;
 	if (info)
 		memset(info, 0, sizeof *info);
-	if (wav_read(path, DOC_MAX_DURATION_MS / 1000, &wd, msg, msglen) != 0) {
-		if (msglen && strstr(msg, "too long"))
-			snprintf(msg, msglen, "The recording is longer than 10 minutes.");
+	if (import_read(path, &wd, msg, msglen) != 0)
 		return -1;
-	}
 	int rc = import_samples(wd.x, wd.n, wd.sr, o, d, info, msg, msglen);
 	wav_data_free(&wd);
 	return rc;

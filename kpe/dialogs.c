@@ -1,5 +1,5 @@
-/* dialogs.c - File > New and Parameters > Globals (one dialog), File > Import WAV's options, Parameters >
- * Optimize, Help > Parameter reference, and a small number prompt. */
+/* dialogs.c - File > New and Parameters > Globals (one dialog), File > Import WAV's range and options (with its
+ * waveform strip), Parameters > Optimize, Help > Parameter reference, and a small number prompt. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +10,7 @@
 #include "app.h"
 #include "optimize.h"
 #include "resource.h"
+#include "waverange.h"
 
 /* Reads a number from a dialog field; 1 on success. */
 static int get_number(HWND dlg, int id, double *v)
@@ -470,50 +471,226 @@ void dlg_optimize(HWND owner)
 static const struct { const wchar_t *name; int q; } qualities[] = {
 	{ L"Fast", IMPORT_FAST }, { L"Normal", IMPORT_NORMAL }, { L"Best", IMPORT_BEST } };
 
+#define WAVE_CHANGED 1 /* the waveform strip's notification (WM_COMMAND): its range changed */
+
+/* The waveform strip (class KpeWave) of the dialog: the whole recording as a min/max envelope per pixel column, the
+ * selected samples a..b shaded. Dragging selects a range, a double-click all of it. One dialog at a time. */
+static struct {
+	const wav_data *wav;
+	long a, b;          /* the selected samples */
+	long press, a0, b0; /* while dragging: where it started, and the range before */
+	int dragging;
+	double *lo, *hi;    /* the envelope, for width columns */
+	int width;
+} wave;
+
+static void wave_notify(HWND h)
+{
+	InvalidateRect(h, NULL, FALSE);
+	SendMessageW(GetParent(h), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(h), WAVE_CHANGED), (LPARAM)h);
+}
+
+static void wave_paint(HWND h)
+{
+	PAINTSTRUCT ps;
+	HDC dc = BeginPaint(h, &ps);
+	RECT rc;
+	GetClientRect(h, &rc);
+	if (wave.width != rc.right) {
+		free(wave.lo);
+		free(wave.hi);
+		wave.lo = malloc(sizeof(double) * (rc.right > 0 ? rc.right : 1));
+		wave.hi = malloc(sizeof(double) * (rc.right > 0 ? rc.right : 1));
+		wave.width = wave.lo && wave.hi ? rc.right : 0;
+		if (wave.width)
+			range_envelope(wave.wav->x, wave.wav->n, wave.width, wave.lo, wave.hi);
+	}
+	FillRect(dc, &rc, GetSysColorBrush(COLOR_WINDOW));
+	RECT sel = { (LONG)floor(range_pixel_of(wave.wav->n, rc.right, wave.a)), 0,
+		(LONG)ceil(range_pixel_of(wave.wav->n, rc.right, wave.b)), rc.bottom };
+	HBRUSH shade = CreateSolidBrush(RGB(204, 228, 247));
+	FillRect(dc, &sel, shade);
+	DeleteObject(shade);
+	HPEN pen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_WINDOWTEXT)), old = SelectObject(dc, pen);
+	double mid = rc.bottom / 2.0;
+	for (int c = 0; c < wave.width; c++) { /* each column from its least to its greatest sample */
+		MoveToEx(dc, c, (int)lround(mid - wave.hi[c] * mid), NULL);
+		LineTo(dc, c, (int)lround(mid - wave.lo[c] * mid) + 1);
+	}
+	SelectObject(dc, old);
+	DeleteObject(pen);
+	EndPaint(h, &ps);
+}
+
+static LRESULT CALLBACK wave_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
+{
+	RECT rc;
+	GetClientRect(h, &rc);
+	long at = range_sample_at(wave.wav ? wave.wav->n : 0, rc.right, (short)LOWORD(lp));
+	switch (msg) {
+	case WM_PAINT:
+		if (!wave.wav)
+			break;
+		wave_paint(h);
+		return 0;
+	case WM_LBUTTONDOWN:
+		SetCapture(h);
+		wave.dragging = 1;
+		wave.press = at;
+		wave.a0 = wave.a;
+		wave.b0 = wave.b;
+		return 0;
+	case WM_MOUSEMOVE:
+		if (wave.dragging) {
+			range_order(wave.press, at, wave.wav->sr, wave.wav->n, &wave.a, &wave.b);
+			wave_notify(h);
+		}
+		return 0;
+	case WM_LBUTTONUP:
+		if (wave.dragging) {
+			ReleaseCapture();
+			wave.dragging = 0;
+			if (wave.a == wave.b) { /* a click, not a drag: the range stays */
+				wave.a = wave.a0;
+				wave.b = wave.b0;
+			}
+			wave_notify(h);
+		}
+		return 0;
+	case WM_LBUTTONDBLCLK:
+		wave.a = 0;
+		wave.b = wave.wav->n;
+		wave_notify(h);
+		return 0;
+	}
+	return DefWindowProcW(h, msg, wp, lp);
+}
+
+typedef struct {
+	import_options *o;
+	const wav_data *wav;
+	long *first, *end;
+} import_args;
+
+static int import_filling; /* the dialog is writing the Start and End fields itself */
+
+static void show_range(HWND dlg)
+{
+	wchar_t t[32];
+	import_filling = 1;
+	swprintf(t, 32, L"%.3f", (double)wave.a / wave.wav->sr);
+	SetDlgItemTextW(dlg, IDC_RANGE_START, t);
+	swprintf(t, 32, L"%.3f", (double)wave.b / wave.wav->sr);
+	SetDlgItemTextW(dlg, IDC_RANGE_END, t);
+	import_filling = 0;
+}
+
+/* Typed Start and End (seconds) move the strip's range when both are numbers and Start comes first. */
+static void range_typed(HWND dlg)
+{
+	double s, e;
+	if (import_filling || !get_number(dlg, IDC_RANGE_START, &s) || !get_number(dlg, IDC_RANGE_END, &e))
+		return;
+	long a = range_from_seconds(s, wave.wav->sr, wave.wav->n), b = range_from_seconds(e, wave.wav->sr, wave.wav->n);
+	if (a < b) {
+		wave.a = a;
+		wave.b = b;
+		InvalidateRect(GetDlgItem(dlg, IDC_WAVE), NULL, FALSE);
+	}
+}
+
+/* Plays the selected range at the recording's own rate. */
+static void play_range(void)
+{
+	long n = wave.b - wave.a;
+	short *pcm = malloc(sizeof(short) * (n > 0 ? n : 1));
+	if (!pcm)
+		return;
+	for (long i = 0; i < n; i++) {
+		double v = floor(wave.wav->x[wave.a + i] * 32768 + 0.5);
+		pcm[i] = (short)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+	}
+	if (n > 0 && audio_play(pcm, (int)n, wave.wav->sr, 0, (int)n) < 0)
+		app_error("The sound device could not be opened.");
+	free(pcm); /* audio_play keeps its own copy */
+}
+
 static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 {
-	static import_options *o;
+	static import_args *a;
 	switch (msg) {
 	case WM_INITDIALOG: {
-		o = (import_options *)lp;
+		a = (import_args *)lp;
 		HWND voice = GetDlgItem(dlg, IDC_VOICE);
 		for (int v = 0; v < VOICE_COUNT; v++) {
 			wchar_t t[64];
 			swprintf(t, 64, L"%hs", import_voice(v)->name);
 			SendMessageW(voice, CB_ADDSTRING, 0, (LPARAM)t);
 		}
-		SendMessageW(voice, CB_SETCURSEL, o->voice, 0);
+		SendMessageW(voice, CB_SETCURSEL, a->o->voice, 0);
 		HWND quality = GetDlgItem(dlg, IDC_QUALITY);
 		for (int i = 0; i < 3; i++) {
 			int at = (int)SendMessageW(quality, CB_ADDSTRING, 0, (LPARAM)qualities[i].name);
 			SendMessageW(quality, CB_SETITEMDATA, at, qualities[i].q);
-			if (qualities[i].q == o->quality)
+			if (qualities[i].q == a->o->quality)
 				SendMessageW(quality, CB_SETCURSEL, at, 0);
 		}
-		set_number(dlg, IDC_TARGET_SR, o->sr);
-		CheckDlgButton(dlg, IDC_SIMPLIFY, o->simplify ? BST_CHECKED : BST_UNCHECKED);
+		set_number(dlg, IDC_TARGET_SR, a->o->sr);
+		CheckDlgButton(dlg, IDC_SIMPLIFY, a->o->simplify ? BST_CHECKED : BST_UNCHECKED);
+		show_range(dlg);
 		return TRUE;
 	}
 	case WM_COMMAND:
-		if (LOWORD(wp) == IDOK) {
-			double sr;
+		switch (LOWORD(wp)) {
+		case IDC_WAVE:
+			if (HIWORD(wp) == WAVE_CHANGED)
+				show_range(dlg);
+			return TRUE;
+		case IDC_RANGE_START:
+		case IDC_RANGE_END:
+			if (HIWORD(wp) == EN_CHANGE)
+				range_typed(dlg);
+			return TRUE;
+		case IDC_RANGE_PLAY:
+			play_range();
+			return TRUE;
+		case IDOK: {
+			double sr, s, e;
 			klatt_param_info pi;
 			KlattParamInfo(KLATT_GLOBAL, KG_SR, &pi);
+			wchar_t m[96];
+			if (!get_number(dlg, IDC_RANGE_START, &s) || s < 0) {
+				reject(dlg, IDC_RANGE_START, L"Enter the start of the range in seconds.");
+				return TRUE;
+			}
+			if (!get_number(dlg, IDC_RANGE_END, &e) || e <= s) {
+				reject(dlg, IDC_RANGE_END, L"Enter the end of the range in seconds, after its start.");
+				return TRUE;
+			}
+			long first = range_from_seconds(s, a->wav->sr, a->wav->n), end = range_from_seconds(e, a->wav->sr, a->wav->n);
+			if (!range_long_enough(first, end, a->wav->sr)) {
+				swprintf(m, 96, L"The range must be at least %g ms long.", RANGE_MIN_MS);
+				reject(dlg, IDC_RANGE_END, m);
+				return TRUE;
+			}
 			if (!get_number(dlg, IDC_TARGET_SR, &sr) || sr < pi.min || sr > pi.max) {
-				wchar_t m[96];
 				swprintf(m, 96, L"Enter a sample rate from %g to %g Hz.", pi.min, pi.max);
 				reject(dlg, IDC_TARGET_SR, m);
 				return TRUE;
 			}
-			o->voice = (int)SendMessageW(GetDlgItem(dlg, IDC_VOICE), CB_GETCURSEL, 0, 0);
-			o->sr = (int)lround(sr);
+			a->o->voice = (int)SendMessageW(GetDlgItem(dlg, IDC_VOICE), CB_GETCURSEL, 0, 0);
+			a->o->sr = (int)lround(sr);
 			HWND quality = GetDlgItem(dlg, IDC_QUALITY);
-			o->quality = (int)SendMessageW(quality, CB_GETITEMDATA, SendMessageW(quality, CB_GETCURSEL, 0, 0), 0);
-			o->simplify = IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
+			a->o->quality = (int)SendMessageW(quality, CB_GETITEMDATA, SendMessageW(quality, CB_GETCURSEL, 0, 0), 0);
+			a->o->simplify = IsDlgButtonChecked(dlg, IDC_SIMPLIFY) == BST_CHECKED;
+			*a->first = first;
+			*a->end = end;
+			audio_stop();
 			EndDialog(dlg, 1);
 			return TRUE;
 		}
-		if (LOWORD(wp) == IDCANCEL) {
+		case IDCANCEL:
+			audio_stop();
 			EndDialog(dlg, 0);
 			return TRUE;
 		}
@@ -522,7 +699,22 @@ static INT_PTR CALLBACK import_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 	return FALSE;
 }
 
-int dlg_import(HWND owner, import_options *o)
+int dlg_import(HWND owner, import_options *o, const wav_data *wav, long *first, long *end)
 {
-	return (int)DialogBoxParamW(app.inst, MAKEINTRESOURCEW(IDD_IMPORT), owner, import_proc, (LPARAM)o);
+	static int registered;
+	if (!registered) {
+		WNDCLASSEXW wc = { .cbSize = sizeof wc, .style = CS_DBLCLKS, .lpfnWndProc = wave_proc, .hInstance = app.inst,
+			.hCursor = LoadCursor(NULL, IDC_IBEAM), .lpszClassName = L"KpeWave" };
+		registered = RegisterClassExW(&wc) != 0;
+	}
+	import_args a = { o, wav, first, end };
+	wave.wav = wav;
+	wave.a = 0;
+	wave.b = wav->n;
+	wave.dragging = 0;
+	int ok = (int)DialogBoxParamW(app.inst, MAKEINTRESOURCEW(IDD_IMPORT), owner, import_proc, (LPARAM)&a) == 1;
+	free(wave.lo);
+	free(wave.hi);
+	memset(&wave, 0, sizeof wave);
+	return ok;
 }

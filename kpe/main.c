@@ -329,21 +329,31 @@ static void cmd_open(void)
 		open_path(path);
 }
 
-/* File > Import WAV: the WAV becomes a new unsaved document (not an undo step, like Open); on any error the
- * current document stays as it was. */
+/* File > Import WAV: the WAV is read first, then the part of it chosen in the dialog becomes a new unsaved document
+ * (not an undo step, like Open); on any error the current document stays as it was. */
 static void cmd_import_wav(void)
 {
 	static import_options o = { VOICE_MALE, 11025, 0, IMPORT_NORMAL }; /* remembered for the next import */
 	wchar_t path[MAX_PATH] = L"";
-	if (!confirm_discard() || !ask_path(0, L"WAV files (*.wav)\0*.wav\0All files (*.*)\0*.*\0", L"wav", path) ||
-	    !dlg_import(app.main, &o))
+	wav_data wav;
+	char msg[512];
+	long first, end;
+	if (!confirm_discard() || !ask_path(0, L"WAV files (*.wav)\0*.wav\0All files (*.*)\0*.*\0", L"wav", path))
 		return;
+	if (import_read(path, &wav, msg, sizeof msg) != 0) {
+		app_error(msg);
+		return;
+	}
+	if (!dlg_import(app.main, &o, &wav, &first, &end)) {
+		wav_data_free(&wav);
+		return;
+	}
 	HCURSOR old = SetCursor(LoadCursorW(NULL, IDC_WAIT));
 	app_status(L"Analyzing\x2026");
 	UpdateWindow(app.status);
 	kpe_doc d;
-	char msg[512];
-	int rc = import_wav(path, &o, &d, NULL, msg, sizeof msg);
+	int rc = import_samples(wav.x + first, end - first, wav.sr, &o, &d, NULL, msg, sizeof msg);
+	wav_data_free(&wav);
 	SetCursor(old);
 	app_status(L"");
 	if (rc != 0) {

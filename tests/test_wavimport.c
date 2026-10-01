@@ -14,6 +14,7 @@
 #include "synthrun.h"
 #include "wavout.h"
 #include "wavimport.h"
+#include "waverange.h"
 
 /* spec 4.6 limits */
 #define LIM_F0_MEDIAN 0.02
@@ -724,6 +725,40 @@ static void test_aspiration_hysteresis(void)
 	CHECK(bad == 0);
 }
 
+/* The Import WAV dialog's range (spec 4.2): importing samples a..b of a recording read with import_read gives the
+ * same document as importing a WAV file that holds just those samples. */
+static void test_range_import(void)
+{
+	kpe_doc src, d1, d2;
+	ba_doc(&src);
+	synth_result s;
+	CHECK(synth_doc(&src, &s) == 0);
+	CHECK(wav_write(L"range_all.wav", s.pcm, s.n, s.sr) == 0);
+	wav_data wd;
+	char msg[256];
+	CHECK(import_read(L"range_all.wav", &wd, msg, sizeof msg) == 0);
+	CHECK(wd.n == s.n && wd.sr == s.sr);
+	long a = range_from_seconds(0.2, wd.sr, wd.n), b = range_from_seconds(0.65, wd.sr, wd.n);
+	CHECK(a == 2205 && b == 7166);
+	CHECK(wav_write(L"range_part.wav", s.pcm + a, (int)(b - a), s.sr) == 0);
+	import_options o = { VOICE_MALE, 11025, 0, IMPORT_NORMAL };
+	int rc1 = import_samples(wd.x + a, b - a, wd.sr, &o, &d1, NULL, msg, sizeof msg);
+	int rc2 = import_wav(L"range_part.wav", &o, &d2, NULL, msg, sizeof msg);
+	CHECK(rc1 == 0 && rc2 == 0);
+	if (rc1 == 0 && rc2 == 0) {
+		CHECK(d1.nframes == 90 && d2.nframes == 90); /* 450 ms */
+		CHECK(memcmp(d1.globals, d2.globals, sizeof d1.globals) == 0);
+		CHECK(memcmp(d1.frames, d2.frames, sizeof(double) * NP * d1.nframes) == 0);
+		doc_free(&d1);
+		doc_free(&d2);
+	}
+	wav_data_free(&wd);
+	CHECK(import_read(L"no_such_file.wav", &wd, msg, sizeof msg) == -1);
+	CHECK(strstr(msg, "Cannot open") != NULL);
+	synth_result_free(&s);
+	doc_free(&src);
+}
+
 /* A steady /a/ at AV 60 with aspiration ah (0: none) and Rd rd, imported: returns the median AH over its steady
  * frames and counts those with AH > 0. */
 static double aspiration_of(double ah, double rd, int *with_ah, int *n)
@@ -1029,6 +1064,7 @@ void suite_wavimport(void)
 	test_stronger_frication();
 	test_hampel();
 	test_aspiration_hysteresis();
+	test_range_import();
 	test_rd_runs();
 	test_aspiration();
 	test_normalization();
