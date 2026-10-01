@@ -52,6 +52,7 @@ static const klatt_param_info global_params[KLATT_NUM_GLOBAL] = {
 	{ "NFC",      "-",  "number of cascade formants",              4,     6,     5 },
 	{ "SRC",      "-",  "voicing source: 0 = Klatt 1980, 1 = LF",  0,     1,     0 },
 	{ "FL",       "%",  "flutter",                                 0,   100,     0 },
+	{ "SPD",      "-",  "speaking speed: 1 = as written",       0.25,     4,     1 },
 };
 
 static const klatt_param_info *table(int kind, int *count)

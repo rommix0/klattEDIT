@@ -1,7 +1,7 @@
 /* klatt.c - Klatt (1980) cascade/parallel formant synthesizer, implemented from the paper's equations and
  * block diagram (D.H. Klatt, JASA 67, 971-995), with the 1.1 extensions: an LF voicing source driven by Rd
- * (Fant 1997; Perrotin et al. 2021), flutter and diplophonia (Klatt & Klatt 1990, JASA 87, 820-857).
- * See docs/klatt-dll.md for the signal path and calibration. */
+ * (Fant 1997; Perrotin et al. 2021), flutter and diplophonia (Klatt & Klatt 1990, JASA 87, 820-857), and 1.2's
+ * speaking speed (SPD, a time scale of the frames only). See docs/klatt-dll.md for the signal path and calibration. */
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -32,7 +32,7 @@ typedef struct { double a1, a2, p, oq; } lf_shape;
 
 struct klatt_synth {
 	double g[KLATT_NUM_GLOBAL]; /* clamped globals */
-	double sr, spf, fmax;       /* sample rate, samples per frame, highest allowed frequency */
+	double sr, spf, fmax;       /* sample rate, samples per frame (SPD applied), highest allowed frequency */
 	int nfc, parallel_only, lf;
 	double out_gain;
 	double frame;               /* frames synthesized since the last reset */
@@ -208,7 +208,8 @@ KLATT_API int KLATT_CALL KlattCreate(const double *globals, klatt_h *out)
 	for (int i = 0; i < KLATT_NUM_GLOBAL; i++)
 		s->g[i] = klatt_clamp(KLATT_GLOBAL, i, globals[i]);
 	s->sr = s->g[KG_SR];
-	s->spf = s->sr * s->g[KG_FRAME_MS] / 1000.0;
+	/* SPD only changes how long a frame lasts; at SPD = 1 the division is exact, so 1.0 timing is unchanged */
+	s->spf = s->sr * s->g[KG_FRAME_MS] / 1000.0 / s->g[KG_SPD];
 	s->fmax = s->sr / 2.0 - 1.0;
 	s->nfc = (int)lround(s->g[KG_NFC]);
 	s->parallel_only = s->g[KG_SW] >= 0.5;

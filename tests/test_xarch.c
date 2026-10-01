@@ -70,6 +70,8 @@ void suite_xarch(void)
 	g[KG_FL] = 50;
 	f[KP_DI] = 30;
 	n = glide(g, f, buf, n, XARCH_MAX);        /* the LF source with flutter and diplophonia */
+	g[KG_SPD] = 1.5;
+	n = glide(g, f, buf, n, XARCH_MAX);        /* the same at one and a half times the speed */
 
 	kpe_doc d;
 	csv_report r;

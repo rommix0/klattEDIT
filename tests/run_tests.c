@@ -10,6 +10,7 @@ void suite_synth_basic(void);
 void suite_synth_voice(void);
 void suite_synth_noise(void);
 void suite_synth_source(void);
+void suite_synth_speed(void);
 void suite_model(void);
 void suite_csvio(void);
 void suite_optimize(void);
@@ -31,6 +32,7 @@ static const struct { const char *name; void (*fn)(void); } suites[] = {
 	{ "synth_voice", suite_synth_voice },
 	{ "synth_noise", suite_synth_noise },
 	{ "synth_source", suite_synth_source },
+	{ "synth_speed", suite_synth_speed },
 	{ "model", suite_model },
 	{ "csvio", suite_csvio },
 	{ "optimize", suite_optimize },

@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define KLATT_VERSION 10100 /* 1.1.0, as major*10000 + minor*100 + patch */
+#define KLATT_VERSION 10200 /* 1.2.0, as major*10000 + minor*100 + patch */
 
 enum { KLATT_FRAME = 0, KLATT_GLOBAL = 1 }; /* parameter kinds */
 
@@ -41,11 +41,11 @@ enum {
 	KLATT_NUM_FRAME
 };
 
-/* Global parameters, in the order KlattCreate expects them. SRC and FL were added in 1.1. */
+/* Global parameters, in the order KlattCreate expects them. SRC and FL were added in 1.1, SPD in 1.2. */
 enum {
 	KG_SW, KG_FGP, KG_BGP, KG_FGZ, KG_BGZ, KG_BGS, KG_FNP, KG_BNP, KG_BNZ,
 	KG_B4, KG_F5, KG_B5, KG_F6, KG_B6, KG_SR, KG_FRAME_MS, KG_G0, KG_NFC,
-	KG_SRC, KG_FL,
+	KG_SRC, KG_FL, KG_SPD,
 	KLATT_NUM_GLOBAL
 };
 

@@ -6,8 +6,9 @@
 static void test_counts_and_version(void)
 {
 	CHECK(KlattVersion() == KLATT_VERSION);
+	CHECK(KLATT_VERSION == 10200);
 	CHECK(KlattParamCount(KLATT_FRAME) == 23);
-	CHECK(KlattParamCount(KLATT_GLOBAL) == 20);
+	CHECK(KlattParamCount(KLATT_GLOBAL) == 21);
 	CHECK(KlattParamCount(7) == KLATT_ERR_ARG);
 }
 
@@ -21,6 +22,14 @@ static void test_info(void)
 	CHECK(KlattParamInfo(KLATT_GLOBAL, KG_SR, &pi) == KLATT_OK);
 	CHECK(strcmp(pi.name, "SR") == 0);
 	CHECK_NEAR(pi.def, 11025, 0);
+	CHECK(KlattParamInfo(KLATT_GLOBAL, KG_SPD, &pi) == KLATT_OK); /* appended in 1.2, after FL */
+	CHECK(KG_SPD == 20);
+	CHECK(strcmp(pi.name, "SPD") == 0);
+	CHECK(strcmp(pi.unit, "-") == 0);
+	CHECK_NEAR(pi.min, 0.25, 0);
+	CHECK_NEAR(pi.max, 4, 0);
+	CHECK_NEAR(pi.def, 1, 0);
+	CHECK(KlattParamInfo(KLATT_GLOBAL, 21, &pi) == KLATT_ERR_ARG);
 	CHECK(KlattParamInfo(KLATT_FRAME, 23, &pi) == KLATT_ERR_ARG);
 	CHECK(KlattParamInfo(KLATT_FRAME, -1, &pi) == KLATT_ERR_ARG);
 	CHECK(KlattParamInfo(KLATT_FRAME, 0, NULL) == KLATT_ERR_ARG);
@@ -42,6 +51,7 @@ static void test_index_lookup(void)
 	CHECK(KlattParamIndex(KLATT_FRAME, "av") == KP_AV);
 	CHECK(KlattParamIndex(KLATT_FRAME, "B3") == KP_B3);
 	CHECK(KlattParamIndex(KLATT_GLOBAL, "frame_ms") == KG_FRAME_MS);
+	CHECK(KlattParamIndex(KLATT_GLOBAL, "spd") == KG_SPD);
 	CHECK(KlattParamIndex(KLATT_FRAME, "F") == KLATT_ERR_ARG);
 	CHECK(KlattParamIndex(KLATT_FRAME, "F10") == KLATT_ERR_ARG);
 	CHECK(KlattParamIndex(KLATT_FRAME, "SR") == KLATT_ERR_ARG);
