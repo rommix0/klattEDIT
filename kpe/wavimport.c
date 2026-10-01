@@ -1256,13 +1256,17 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 			for (int p = 0; p < NP; p++)
 				if (p == KP_AV || p == KP_AF || p == KP_AH || p == KP_AVS || p == KP_AN || (p >= KP_A1 && p <= KP_AB))
 					frames[(size_t)k * NP + p] = 0;
-	if (o->simplify) {
+	if (o->simplify) { /* Optimize's defaults: smoothing, then simplification */
 		double *v = malloc(sizeof(double) * nframes);
 		if (!v)
 			goto oom;
 		for (int p = 0; p < NP; p++) {
 			for (int k = 0; k < nframes; k++)
 				v[k] = frames[(size_t)k * NP + p];
+			if (opt_smooth(v, nframes, IMPORT_FRAME_MS, opt_smooth_default(p), opt_smooth_runs(p)) != 0) {
+				free(v);
+				goto oom;
+			}
 			opt_simplify(v, nframes, 0, 1, opt_tol_default[opt_tol_class(p)], NULL);
 			for (int k = 0; k < nframes; k++)
 				frames[(size_t)k * NP + p] = v[k];

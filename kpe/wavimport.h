@@ -12,7 +12,7 @@ enum { VOICE_MALE, VOICE_FEMALE, VOICE_CHILD, VOICE_COUNT };
 typedef struct {
 	int voice;     /* VOICE_* */
 	int sr;        /* target sample rate: the document's SR */
-	int simplify;  /* run Optimize on every track afterwards (every frame grid, default tolerances) */
+	int simplify;  /* run Optimize on every track afterwards (default smoothing, every frame grid, default tolerances) */
 } import_options;
 
 /* The voice types' F0 search ranges and reference F1-F4 (spec 4.4). */

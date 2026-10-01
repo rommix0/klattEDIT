@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "test.h"
+#include "klatt.h"
 #include "optimize.h"
 
 static void test_straight_line_keeps_ends(void)
@@ -121,6 +122,108 @@ static void test_long_jagged_track(void)
 	free(v);
 }
 
+static void test_smooth_removes_a_spike(void)
+{
+	double v[40];
+	for (int i = 0; i < 40; i++)
+		v[i] = 2500;
+	v[17] = 3100; /* one frame off: the median takes it out before the Gaussian can spread it */
+	CHECK(opt_smooth(v, 40, 5, 20, 0) == 0);
+	double worst = 0;
+	for (int i = 0; i < 40; i++)
+		worst = fmax(worst, fabs(v[i] - 2500));
+	CHECK(worst < 1e-9);
+}
+
+static void test_smooth_keeps_a_step(void)
+{
+	double v[60];
+	for (int i = 0; i < 60; i++)
+		v[i] = i < 30 ? 1200 : 1600;
+	CHECK(opt_smooth(v, 60, 5, 15, 0) == 0); /* sigma 1.27 frames: the Gaussian reaches 4 frames */
+	int monotonic = 1;
+	for (int i = 1; i < 60; i++)
+		monotonic &= v[i] >= v[i - 1];
+	CHECK(monotonic);
+	CHECK_NEAR(v[25], 1200, 1e-9); /* more than 3 sigma from the step: untouched */
+	CHECK_NEAR(v[34], 1600, 1e-9);
+	CHECK_NEAR(v[29] + v[30], 2800, 1e-9); /* symmetric about the step */
+	CHECK(v[29] > 1200 && v[30] < 1600);
+}
+
+/* The Gaussian's full width at half maximum, measured on a 3-frame impulse (a single frame would fall to the
+ * median) at 1 ms frames: the 3-frame box widens a 60 ms FWHM by well under 1 %. */
+static void test_smooth_fwhm(void)
+{
+	static double v[401];
+	memset(v, 0, sizeof v);
+	v[199] = v[200] = v[201] = 1000;
+	CHECK(opt_smooth(v, 401, 1, 60, 0) == 0);
+	double peak = v[200], lo = -1, hi = -1;
+	for (int i = 1; i < 401; i++) { /* the half-maximum crossings, linearly interpolated */
+		if (v[i - 1] < peak / 2 && v[i] >= peak / 2)
+			lo = i - 1 + (peak / 2 - v[i - 1]) / (v[i] - v[i - 1]);
+		if (v[i - 1] >= peak / 2 && v[i] < peak / 2)
+			hi = i - 1 + (v[i - 1] - peak / 2) / (v[i - 1] - v[i]);
+	}
+	CHECK_NEAR(hi - lo, 60, 0.6);
+	double sum = 0;
+	for (int i = 0; i < 401; i++)
+		sum += v[i];
+	CHECK_NEAR(sum, 3000, 1e-6); /* away from the ends nothing is lost */
+	CHECK(v[200 - 80] == 0 && v[200 + 80] == 0); /* truncated at 3 sigma (76 frames) */
+}
+
+static void test_smooth_amplitude_runs(void)
+{
+	double v[50];
+	for (int i = 0; i < 50; i++)
+		v[i] = i < 10 || i >= 40 ? 0 : 40 + (i % 2) * 6; /* an onset at 10, an offset at 40, +-3 dB wobble */
+	CHECK(opt_smooth(v, 50, 5, 20, 1) == 0);
+	CHECK(v[9] == 0 && v[40] == 0); /* zeros stay zeros */
+	CHECK(v[10] >= 40 && v[39] >= 40); /* the onset and the offset stay sharp: the run is renormalized at its ends */
+	double lo = 99, hi = 0;
+	for (int i = 14; i < 36; i++) {
+		lo = fmin(lo, v[i]);
+		hi = fmax(hi, v[i]);
+	}
+	CHECK(hi - lo < 1); /* the wobble is gone inside the run */
+	CHECK_NEAR(lo, 43, 0.5);
+}
+
+static void test_smooth_edge_cases(void)
+{
+	double v[30], orig[30];
+	for (int i = 0; i < 30; i++)
+		v[i] = orig[i] = 500 + 37 * sin(i);
+	CHECK(opt_smooth(v, 30, 5, 0, 0) == 0); /* width 0: off */
+	CHECK(memcmp(v, orig, sizeof v) == 0);
+	CHECK(opt_smooth(v, 30, 5, -3, 1) == 0);
+	CHECK(memcmp(v, orig, sizeof v) == 0);
+	for (int i = 0; i < 30; i++)
+		v[i] = 1800;
+	CHECK(opt_smooth(v, 30, 5, 25, 0) == 0); /* a constant stays constant, ends included */
+	for (int i = 0; i < 30; i++)
+		CHECK_NEAR(v[i], 1800, 1e-9);
+	double two[2] = { 1, 9 };
+	CHECK(opt_smooth(two, 2, 5, 25, 0) == 0);
+	CHECK_NEAR(two[0] + two[1], 10, 1e-9);
+	CHECK(opt_smooth(two, 0, 5, 25, 0) == 0);
+}
+
+static void test_smooth_defaults(void)
+{
+	CHECK(opt_smooth_default(KP_F1) == 10 && opt_smooth_default(KP_F2) == 15);
+	CHECK(opt_smooth_default(KP_F3) == 20 && opt_smooth_default(KP_F4) == 25);
+	int others = 0;
+	for (int p = 0; p < KLATT_NUM_FRAME; p++)
+		if (p < KP_F1 || p > KP_F4)
+			others += opt_smooth_default(p) != 0;
+	CHECK(others == 0);
+	CHECK(opt_smooth_runs(KP_AV) && opt_smooth_runs(KP_A3) && opt_smooth_runs(KP_AH));
+	CHECK(!opt_smooth_runs(KP_F0) && !opt_smooth_runs(KP_F2) && !opt_smooth_runs(KP_B1) && !opt_smooth_runs(KP_RD));
+}
+
 void suite_optimize(void)
 {
 	test_straight_line_keeps_ends();
@@ -133,4 +236,10 @@ void suite_optimize(void)
 	test_grid_less_than_one_normalized();
 	test_grid_too_coarse_reports_max_err();
 	test_long_jagged_track();
+	test_smooth_removes_a_spike();
+	test_smooth_keeps_a_step();
+	test_smooth_fwhm();
+	test_smooth_amplitude_runs();
+	test_smooth_edge_cases();
+	test_smooth_defaults();
 }

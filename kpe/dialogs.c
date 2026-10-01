@@ -281,14 +281,56 @@ static double tolerance_for(int p, const double *tol)
 	return tol[opt_tol_class(p)];
 }
 
-/* Undoes an earlier preview, then optimizes the checked tracks as one undo step. Returns 1, or 0 if a field
- * is invalid or discarding the earlier preview ran out of memory (the dialog stays open either way). */
+#define SMOOTH_MAX_MS 500
+static double smooth_ms[NP]; /* each track's smoothing width, remembered for the session */
+static int smooth_set;       /* smooth_ms holds the defaults or later choices */
+static int filling;          /* the dialog is setting the Smoothing field itself: not a user edit */
+
+/* A track list row: the track's name and its smoothing width ("F2 · 15 ms"). */
+static void set_row_text(HWND tracks, int p)
+{
+	wchar_t t[48];
+	swprintf(t, 48, L"%hs \x00B7 %g ms", param_name(KLATT_FRAME, p), smooth_ms[p]);
+	ListView_SetItemText(tracks, p, 0, t);
+}
+
+/* The Smoothing field shows the first selected track's width; it is disabled while no track is selected. */
+static void show_smoothing(HWND dlg)
+{
+	int p = ListView_GetNextItem(GetDlgItem(dlg, IDC_TRACKS), -1, LVNI_SELECTED);
+	filling = 1;
+	if (p >= 0)
+		set_number(dlg, IDC_SMOOTH, smooth_ms[p]);
+	else
+		SetDlgItemTextW(dlg, IDC_SMOOTH, L"");
+	filling = 0;
+	EnableWindow(GetDlgItem(dlg, IDC_SMOOTH), p >= 0);
+}
+
+/* A valid width typed into the Smoothing field applies to every selected track at once. */
+static void smoothing_edited(HWND dlg)
+{
+	double w;
+	if (filling || !get_number(dlg, IDC_SMOOTH, &w) || w < 0 || w > SMOOTH_MAX_MS)
+		return;
+	HWND tracks = GetDlgItem(dlg, IDC_TRACKS);
+	for (int p = -1; (p = ListView_GetNextItem(tracks, p, LVNI_SELECTED)) >= 0;) {
+		smooth_ms[p] = w;
+		set_row_text(tracks, p);
+	}
+}
+
+/* Undoes an earlier preview, then smooths and simplifies the checked tracks as one undo step. Returns 1, or 0 if
+ * a field is invalid or discarding the earlier preview ran out of memory (the dialog stays open either way). */
 static int run_optimize(HWND dlg)
 {
-	double tol[NTOL];
+	double tol[NTOL], w;
 	for (int i = 0; i < NTOL; i++)
 		if (!get_number(dlg, tol_ids[i], &tol[i]) || tol[i] < 0)
 			return reject(dlg, tol_ids[i], L"Enter a tolerance of 0 or more.");
+	if (IsWindowEnabled(GetDlgItem(dlg, IDC_SMOOTH)) &&
+	    (!get_number(dlg, IDC_SMOOTH, &w) || w < 0 || w > SMOOTH_MAX_MS))
+		return reject(dlg, IDC_SMOOTH, L"Enter a smoothing width from 0 (off) to 500 ms.");
 	if (!discard_preview())
 		return 0;
 	clear_ghosts();
@@ -313,14 +355,21 @@ static int run_optimize(HWND dlg)
 			v[i] = doc_get(&app.doc, first + i, p);
 		if (app.ghost[p])
 			memcpy(app.ghost[p], v, sizeof(double) * count);
-		double err;
-		int kept = opt_simplify(v, count, first, grid, tolerance_for(p, tol), &err);
-		for (int i = 0; i < count; i++)
+		double err = 0, smoothed = smooth_ms[p];
+		if (opt_smooth(v, count, doc_frame_ms(&app.doc), smoothed, opt_smooth_runs(p)) < 0)
+			smoothed = 0; /* out of memory: simplified unsmoothed */
+		int kept = opt_simplify(v, count, first, grid, tolerance_for(p, tol), NULL);
+		for (int i = 0; i < count; i++) {
+			err = fmax(err, fabs(v[i] - doc_get(&app.doc, first + i, p))); /* against the original values */
 			doc_set(&app.doc, first + i, p, v[i]);
+		}
 		klatt_param_info pi;
 		KlattParamInfo(KLATT_FRAME, p, &pi);
-		len += swprintf(summary + len, 4096 - len, L"%hs: %d -> %d breakpoints, max error %.3g %hs\r\n", pi.name,
-		                count, kept, err, pi.unit);
+		wchar_t how[32] = L"";
+		if (smoothed > 0)
+			swprintf(how, 32, L"smoothed %g ms, ", smoothed);
+		len += swprintf(summary + len, 4096 - len, L"%hs: %ls%d -> %d breakpoints, max error %.3g %hs\r\n", pi.name,
+		                how, count, kept, err, pi.unit);
 	}
 	free(v);
 	app.ghost_first = first;
@@ -333,7 +382,6 @@ static int run_optimize(HWND dlg)
 
 static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 {
-	(void)lp;
 	switch (msg) {
 	case WM_INITDIALOG: {
 		HWND tracks = GetDlgItem(dlg, IDC_TRACKS);
@@ -342,13 +390,18 @@ static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 		GetClientRect(tracks, &rc);
 		LVCOLUMNW col = { .mask = LVCF_WIDTH, .cx = rc.right - GetSystemMetrics(SM_CXVSCROLL) };
 		ListView_InsertColumn(tracks, 0, &col);
+		if (!smooth_set) {
+			for (int p = 0; p < NP; p++)
+				smooth_ms[p] = opt_smooth_default(p);
+			smooth_set = 1;
+		}
 		for (int p = 0; p < NP; p++) {
-			wchar_t t[16];
-			swprintf(t, 16, L"%hs", param_name(KLATT_FRAME, p));
-			LVITEMW it = { .mask = LVIF_TEXT, .iItem = p, .pszText = t };
+			LVITEMW it = { .mask = LVIF_TEXT, .iItem = p, .pszText = L"" };
 			ListView_InsertItem(tracks, &it);
+			set_row_text(tracks, p);
 			ListView_SetCheckState(tracks, p, app.visible[p]);
 		}
+		show_smoothing(dlg);
 		int sel = app.sel_a >= 0;
 		EnableWindow(GetDlgItem(dlg, IDC_RANGE_SEL), sel);
 		CheckRadioButton(dlg, IDC_RANGE_SEL, IDC_RANGE_ALL, sel ? IDC_RANGE_SEL : IDC_RANGE_ALL);
@@ -370,8 +423,19 @@ static INT_PTR CALLBACK optimize_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp)
 		saved_dirty = app.doc.dirty;
 		return TRUE;
 	}
+	case WM_NOTIFY: {
+		NMLISTVIEW *n = (NMLISTVIEW *)lp;
+		if (n->hdr.idFrom == IDC_TRACKS && n->hdr.code == LVN_ITEMCHANGED && (n->uChanged & LVIF_STATE) &&
+		    ((n->uOldState ^ n->uNewState) & LVIS_SELECTED))
+			show_smoothing(dlg);
+		break;
+	}
 	case WM_COMMAND:
 		switch (LOWORD(wp)) {
+		case IDC_SMOOTH:
+			if (HIWORD(wp) == EN_CHANGE)
+				smoothing_edited(dlg);
+			return TRUE;
 		case IDC_PREVIEW:
 			run_optimize(dlg);
 			return TRUE;

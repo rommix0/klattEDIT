@@ -10,6 +10,7 @@
 #include "measure.h"
 #include "model.h"
 #include "csvio.h"
+#include "optimize.h"
 #include "synthrun.h"
 #include "wavout.h"
 #include "wavimport.h"
@@ -715,7 +716,11 @@ static void test_result_document(void)
 		doc_free(&d);
 	}
 
-	/* simplify: fewer distinct values, still within the parameter ranges */
+	/* simplify: fewer distinct values, still within the parameter ranges; the same as Optimize's default smoothing
+	 * and simplification applied to the plain import */
+	kpe_doc plain;
+	o.simplify = 0;
+	CHECK(import_samples(x, s.n, s.sr, &o, &plain, NULL, msg, sizeof msg) == 0);
 	o.simplify = 1;
 	rc = import_samples(x, s.n, s.sr, &o, &d, NULL, msg, sizeof msg);
 	CHECK(rc == 0);
@@ -727,8 +732,20 @@ static void test_result_document(void)
 			changes += fabs((c - b) - (b - a)) > 1e-6; /* a breakpoint: the slope changes */
 		}
 		CHECK(changes < d.nframes / 4);
+		double *v = malloc(sizeof(double) * plain.nframes), worst = 0;
+		for (int p = 0; p < NP; p++) {
+			for (int k = 0; k < plain.nframes; k++)
+				v[k] = plain.frames[(size_t)k * NP + p];
+			opt_smooth(v, plain.nframes, doc_frame_ms(&plain), opt_smooth_default(p), opt_smooth_runs(p));
+			opt_simplify(v, plain.nframes, 0, 1, opt_tol_default[opt_tol_class(p)], NULL);
+			for (int k = 0; k < plain.nframes; k++)
+				worst = fmax(worst, fabs(v[k] - d.frames[(size_t)k * NP + p]));
+		}
+		CHECK(plain.nframes == d.nframes && worst == 0);
+		free(v);
 		doc_free(&d);
 	}
+	doc_free(&plain);
 	free(x);
 	free(x2);
 	synth_result_free(&s);

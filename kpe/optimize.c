@@ -1,4 +1,5 @@
-/* optimize.c - Douglas-Peucker simplification restricted to grid frames. See optimize.h. */
+/* optimize.c - median + Gaussian smoothing, and Douglas-Peucker simplification restricted to grid frames. See
+ * optimize.h. */
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +7,79 @@
 #include "optimize.h"
 
 const double opt_tol_default[OPT_NTOL] = { 20, 2, 1, 0.05, 2 };
+
+double opt_smooth_default(int p)
+{
+	switch (p) {
+	case KP_F1: return 10;
+	case KP_F2: return 15;
+	case KP_F3: return 20;
+	case KP_F4: return 25;
+	default: return 0;
+	}
+}
+
+int opt_smooth_runs(int p)
+{
+	return opt_tol_class(p) == OPT_TOL_DB;
+}
+
+static double median3(double a, double b, double c)
+{
+	return fmax(fmin(a, b), fmin(fmax(a, b), c));
+}
+
+/* Smooths v[a..b) (one run) from the copy in u: the median into u, then the Gaussian w[-h..h] back into v. */
+static void smooth_run(double *v, double *u, int a, int b, const double *w, int h)
+{
+	for (int i = a + 1; i < b - 1; i++) /* the run's two ends keep their values */
+		u[i] = median3(v[i - 1], v[i], v[i + 1]);
+	for (int i = a; i < b; i++) {
+		double sum = 0, wsum = 0; /* summed as differences from u[i], so a constant stays exactly constant */
+		for (int j = -h; j <= h; j++)
+			if (i + j >= a && i + j < b) {
+				sum += w[j] * (u[i + j] - u[i]);
+				wsum += w[j];
+			}
+		v[i] = u[i] + sum / wsum;
+	}
+}
+
+int opt_smooth(double *v, int count, double frame_ms, double width_ms, int runs)
+{
+	if (!(width_ms > 0) || count <= 0)
+		return 0;
+	double sigma = width_ms / 2.3548 / frame_ms; /* in frames */
+	int h = (int)floor(3 * sigma);
+	double *u = malloc(sizeof(double) * count), *w = malloc(sizeof(double) * (2 * h + 1));
+	if (!u || !w) {
+		free(u);
+		free(w);
+		return -1;
+	}
+	w += h; /* w[-h..h] */
+	for (int j = -h; j <= h; j++)
+		w[j] = exp(-0.5 * j * j / (sigma * sigma));
+	memcpy(u, v, sizeof(double) * count);
+	if (!runs) {
+		smooth_run(v, u, 0, count, w, h);
+	} else {
+		for (int a = 0; a < count;) {
+			if (v[a] == 0) {
+				a++;
+				continue;
+			}
+			int b = a;
+			while (b < count && v[b] != 0)
+				b++;
+			smooth_run(v, u, a, b, w, h);
+			a = b;
+		}
+	}
+	free(u);
+	free(w - h);
+	return 0;
+}
 
 int opt_tol_class(int p)
 {
