@@ -622,6 +622,46 @@ static void test_normalization(void)
 	doc_free(&src);
 }
 
+/* Two vowels with different Rd (0.6, then 2.0) apart by 130 ms of silence: Rd is fitted on every 12th frame, and the
+ * frames of the second vowel before its first fit (frame 96) take that fit's value, not the first vowel's. */
+static void test_rd_runs(void)
+{
+	kpe_doc src, d;
+	new_doc(&src, 800, 1);
+	TRACK(&src, KP_AV, { 0, 0 }, { 40, 0 }, { 60, 60 }, { 280, 60 }, { 300, 0 }, { 430, 0 }, { 450, 60 }, { 740, 60 },
+		{ 760, 0 });
+	TRACK(&src, KP_F0, { 0, 120 }, { 800, 105 });
+	TRACK(&src, KP_F1, { 0, 700 });
+	TRACK(&src, KP_F2, { 0, 1220 });
+	TRACK(&src, KP_F3, { 0, 2600 });
+	TRACK(&src, KP_RD, { 0, 0.6 }, { 350, 0.6 }, { 380, 2.0 });
+	round_doc(&src);
+	synth_result s;
+	CHECK(synth_doc(&src, &s) == 0);
+	double *x = pcm_to_double(&s);
+	import_options o = { VOICE_MALE, s.sr, 0 };
+	char msg[256];
+	import_info info;
+	int rc = import_samples(x, s.n, s.sr, &o, &d, &info, msg, sizeof msg);
+	CHECK(rc == 0);
+	if (rc == 0) {
+		double worst = 0;
+		int n = 0;
+		for (int k = 80; k < 96; k++) /* 400-480 ms: the second vowel's voiced frames before its first fit */
+			if (info.cls[k] == CLS_VOICED) {
+				worst = fmax(worst, fabs(d.frames[(size_t)k * NP + KP_RD] - 2.0));
+				n++;
+			}
+		printf("  second vowel's %d voiced frames before its first Rd fit: |Rd - 2.0| at most %.2f\n", n, worst);
+		CHECK(n > 0 && worst <= LIM_RD);
+		import_info_free(&info);
+		doc_free(&d);
+	}
+	free(x);
+	synth_result_free(&s);
+	doc_free(&src);
+}
+
 static void test_result_document(void)
 {
 	kpe_doc src, d;
@@ -720,6 +760,15 @@ static void test_refusals(void)
 
 	CHECK(import_wav(L"no_such_file.wav", &o, &d, NULL, msg, sizeof msg) == -1);
 	CHECK(strstr(msg, "Cannot open") != NULL);
+
+	short none[1] = { 0 }; /* an empty WAV: no samples at all */
+	CHECK(wav_write(L"empty.wav", none, 0, 11025) == 0);
+	CHECK(import_wav(L"empty.wav", &o, &d, NULL, msg, sizeof msg) == -1);
+	if (!strstr(msg, "No sound found"))
+		printf("  empty WAV: \"%s\"\n", msg);
+	CHECK(strstr(msg, "No sound found") != NULL);
+	CHECK(d.nframes == -12345);
+
 	o.sr = 100; /* outside SR's range */
 	double one[4] = { 0.5, -0.5, 0.5, -0.5 };
 	CHECK(import_samples(one, 4, 11025, &o, &d, NULL, msg, sizeof msg) == -1);
@@ -768,6 +817,7 @@ void suite_wavimport(void)
 	test_result_document();
 	test_round_trips();
 	test_round_trips_sr();
+	test_rd_runs();
 	test_aspiration();
 	test_normalization();
 	test_speed();

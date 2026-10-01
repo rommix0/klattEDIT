@@ -59,7 +59,8 @@ int import_period_frames(double f0);
 
 /* Analyses x (n samples at sr_in Hz, in [-1, 1)) into *d, a new document (not dirty). info may be NULL; otherwise
  * it receives the per-frame analysis (free it with import_info_free). Returns 0, or -1 with msg set (UTF-8) and
- * *d untouched: too long (over DOC_MAX_DURATION_MS), no sound (peak below -60 dBFS), bad arguments, out of memory. */
+ * *d untouched: too long (over DOC_MAX_DURATION_MS), no sound (no samples, or peak below -60 dBFS), bad arguments,
+ * out of memory. */
 int import_samples(const double *x, long n, int sr_in, const import_options *o, kpe_doc *d, import_info *info,
 	char *msg, size_t msglen);
 

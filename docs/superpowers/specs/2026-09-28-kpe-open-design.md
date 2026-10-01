@@ -21,9 +21,10 @@ Date: 2026-09-28. Status: approved in brainstorming, pending written-spec review
 
 - Any support for IPOX's `.PAR` format (text or binary), or a clone of the old `KLATT.DLL` `Klatt()` entry point.
 - Porting any other IPOX program (IPOX.EXE, IRC.EXE, PLAY.EXE, SETUP.EXE).
-- Resynthesis from WAV in v1: it is designed in `2026-09-29-voice-source-and-wav-import-design.md` (Part B, File >
-  Import WAV…).
 - A command-line synthesis tool.
+
+Resynthesis from a WAV recording (File > Import WAV…) is designed separately, in
+`2026-09-29-voice-source-and-wav-import-design.md` (Part B).
 
 ## 2. Clean-room rules
 

@@ -78,9 +78,12 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
       step); File > Save asks for a name and suggests `<wav name>.csv`; closing asks to save.
 - [ ] Errors are shown in a message box and leave the current document untouched: a non-WAV file ("Not a WAV
       file"), an unsupported format (for example an ADPCM or 64-bit float WAV, whose message names the format), a
-      recording longer than 10 minutes, and a silent one ("No sound found").
+      sample rate above 1 MHz (the message names it), a recording longer than 10 minutes, and a silent or empty
+      one ("No sound found").
 - [ ] Simplify with Optimize afterwards gives tracks with visibly fewer breakpoints.
 - [ ] Listening on the user's recordings in `C:\Users\abart\Desktop\fextr_sept2026\wavs` (adult male, 11025 Hz):
       `AE`, `IH` and `OW` resynthesize as the same vowels at a similar pitch, without aspiration in their steady
       parts; `S` and `SH` as the two different hisses; `Z`, `ZH` and `V` as voiced fricatives (V is weak: its
-      frication is quiet and missing in some frames). Every resynthesis peaks at about -1 dBFS without clipping.
+      frication is quiet and missing in some frames). Every resynthesis peaks at about -1 dBFS without clipping,
+      with no burst or click before an onset; a copy of a recording scaled 20 dB down imports with the same
+      amplitudes and G0 (within a step).

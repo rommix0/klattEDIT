@@ -556,7 +556,8 @@ static int fit_rd_track(const double *x, long n, int sr, const unsigned char *cl
 		qsort(win, m, sizeof(double), cmp_double);
 		sm[i] = m & 1 ? win[m / 2] : 0.5 * (win[m / 2 - 1] + win[m / 2]);
 	}
-	/* fill: interpolate between consecutive fits when every frame between them is voiced, else hold */
+	/* fill: interpolate between consecutive fits when every frame between them is voiced; a voiced run's frames
+	 * before its first fit take that fit; elsewhere hold */
 	double last = 1.0;
 	int next = 0;
 	for (int k = 0; k < nframes; k++) {
@@ -566,10 +567,12 @@ static int fit_rd_track(const double *x, long n, int sr, const unsigned char *cl
 		if (next < nfit && idx[next] == k) {
 			v = sm[next];
 		} else if (next > 0 && next < nfit) {
-			int a = idx[next - 1], b = idx[next], gap = 0;
+			int a = idx[next - 1], b = idx[next], gap = 0, gap_after = 0;
 			for (int j = a; j <= b && !gap; j++)
 				gap = cls[j] != CLS_VOICED && cls[j] != CLS_VOICED_FRIC;
-			v = gap ? last : sm[next - 1] + (sm[next] - sm[next - 1]) * (k - a) / (b - a);
+			for (int j = k; j <= b && !gap_after; j++) /* k in the next fit's run, before that fit: its value */
+				gap_after = cls[j] != CLS_VOICED && cls[j] != CLS_VOICED_FRIC;
+			v = !gap ? sm[next - 1] + (sm[next] - sm[next - 1]) * (k - a) / (b - a) : gap_after ? last : sm[next];
 		} else if (next == 0 && nfit > 0) {
 			v = sm[0]; /* before the first fit: its value */
 		} else {
@@ -883,6 +886,8 @@ static int correct_formants(const double *g, double *frames, int nframes, const 
 		doc_init_from(&d, g, nframes, fr);
 		synth_result s;
 		int rc = synth_doc(&d, &s);
+		d.frames = NULL; /* fr stays ours */
+		doc_free(&d);
 		if (rc != 0 || !(x = realloc(x, sizeof(double) * (s.n > 0 ? s.n : 1)))) {
 			if (rc == 0)
 				synth_result_free(&s);
@@ -932,8 +937,10 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	if (msglen)
 		msg[0] = 0;
 	const voice_info *vt = o ? import_voice(o->voice) : NULL;
-	if (!vt || !x0 || n0 <= 0 || sr_in <= 0 || !sr_ok(o->sr))
+	if (!vt || !x0 || n0 < 0 || sr_in <= 0 || !sr_ok(o->sr))
 		return fail(msg, msglen, "Cannot import: bad arguments.");
+	if (n0 == 0)
+		return fail(msg, msglen, "No sound found (the recording is empty).");
 	if (n0 * 1000.0 / sr_in > DOC_MAX_DURATION_MS)
 		return fail(msg, msglen, "The recording is longer than 10 minutes.");
 	double peak = 0;

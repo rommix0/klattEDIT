@@ -188,8 +188,8 @@ only to synthesize. The GUI adds the menu command and dialog.
   file with more samples than a buffer of doubles can address.
 - **Resampler** to the target SR: windowed sinc (Kaiser window), any ratio; passband flat within 0.1 dB up to 0.9 × the
   lower Nyquist frequency, stopband at least 60 dB down.
-- A recording longer than the document maximum (10 minutes) is refused; a silent one (peak below -60 dBFS) is
-  refused with "No sound found".
+- A recording longer than the document maximum (10 minutes) is refused; a silent one (peak below -60 dBFS) or an
+  empty one is refused with "No sound found".
 
 ### 4.3 Analysis
 
@@ -237,7 +237,8 @@ that frame.
    Rd, starting at least max(10 ms, 3 periods) before the window, and it goes through exactly the same pre-emphasis,
    window and inverse filter (the WAV frame's LPC coefficients) as the WAV frame. Anything the two sides share
    cancels, so a fitted Rd means what the synthesizer does with it. The fits are median-smoothed over 3 fits,
-   interpolated inside voiced runs and held elsewhere (1.0 if a file has no fit).
+   interpolated inside voiced runs (a run's frames before its first fit take that fit) and held elsewhere (1.0 if a
+   file has no fit).
 8. **Levels, calibrated against the synthesizer:**
    - Start values from three reference syntheses at 60 dB (a neutral vowel with AV, with AH, and AF with A2-A6):
      AV from the frame level (voiced classes); in aspiration frames AH from the frame level; for fricative classes AF
@@ -304,7 +305,9 @@ All automated tests use synthetic audio made by the DLL from known documents, so
 
 - **Units:** WAV reader for every supported format and every refusal; resampler (tone frequency and level, image
   rejection); Burg on a known AR process (coefficients within 1 %); the root finder on polynomials with known roots;
-  Viterbi on hand-made candidate sequences, including a missing and a spurious candidate.
+  Viterbi on hand-made candidate sequences, including a missing and a spurious candidate; the import's refusals
+  (silent, empty, too long); Rd over two vowels (Rd 0.6, then 2.0) apart by silence, whose second vowel's frames
+  before its first fit are within 0.3 of 2.0.
 - **Round trip:** `ba.csv` (also 10, 20 and 30 dB quieter), a female-range vowel sequence, /asa/ (also 10, 20, 30
   and 48 dB quieter), /aza/, a /z/ with 10 dB weaker frication, an /aʃa/ with its frication at 2-4 kHz, an /ava/ with
   flat frication over damped voicing, and an Rd sweep (all but `ba.csv` with SRC = 1), synthesized and imported,
