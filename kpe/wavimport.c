@@ -49,6 +49,25 @@
 #define TOP_REF_WIDTH_HZ 500.0
 #define TOP_REF_BANDS 40
 #define LEVEL_FLOOR -200.0    /* dB given to an empty band */
+#define REL_HF_LO 0.1         /* a frame's reliability for the formant tracker (reliability) falls from 1 at this
+                               * energy fraction above the cutoff to REL_MIN at REL_HF_HI: vowels read up to 0.09,
+                               * /s/ 0.76 and up (0.05-0.2 changed nothing on the user's recordings)... */
+#define REL_HF_HI 0.3
+#define REL_TOP_LO -20.0      /* ...and from 1 at this upper-band flatness to REL_MIN at REL_TOP_HI: the vowels'
+                               * middle parts read -40..-11 dB, the user's /v/ -9..-4, /z/ -5..2, /zh/ -12..-5;
+                               * -25..-10 left 11 of the /v/'s 91 frames with F1 above 1 kHz (6 with these) */
+#define REL_TOP_HI -5.0
+#define REL_MIN 0.1           /* the least reliability, so the distance from the reference still ranks a frication
+                               * frame's candidates a little: at 0.05 the /aza/ with 6 dB stronger frication kept
+                               * F2/F3 90th-percentile errors of 57/45 % in its fricative (12/10 % at 0.1); at 0.2 the
+                               * recordings' F4 had 21 spikes (15), at 0.4 24 */
+#define LOW_HZ 3000.0         /* the second analysis low-passes at min(LOW_HZ, LOW_FRAC SR), where the voicing
+                               * dominates F1-F3: at 2500 Hz the /aza/'s F2 kept a 57 % 90th-percentile error */
+#define LOW_FRAC 0.3
+#define CONFIRM_DIST 0.1      /* a full-band candidate this close (fraction) to a low-band one is confirmed (its
+                               * local cost halved, track.c): 0.05 and 0.2 moved the recordings' spikes by 3 at most,
+                               * 0.2 left 12 /v/ frames with F1 above 1 kHz; without the second analysis the /aza/'s
+                               * F2/F3 kept 57/45 % and the /ava/'s F3 38 % 90th-percentile errors (12/10 and 20 %) */
 #define AP_ASP_ON 0.25        /* a voiced frame gets aspiration only from this (smoothed) aperiodicity on: the user's
                                * modal vowels read 0.01-0.2 in their middle halves (0.15 left 5-11 frames with AH,
                                * 0.25 none in AE and OW and 3 of 49 in IH's noisy patch); aspiration 5 dB below AV
@@ -949,6 +968,68 @@ static int correct_formants(const double *g, double *frames, int nframes, const 
 	return 1;
 }
 
+/* ---- reliability and the second analysis (formant tracking, step 3) ---- */
+
+/* 1 at or below lo, 0 at or above hi, linear between. */
+static double falling(double v, double lo, double hi)
+{
+	return v <= lo ? 1 : v >= hi ? 0 : (hi - v) / (hi - lo);
+}
+
+/* A frame's reliability for the formant tracker, from the frication measures with neutral formants (step 6): 1 for
+ * a frame with little frication, REL_MIN for a frication-dominated one. hf is the energy fraction above the
+ * cutoff; top, the upper band's flatness, counts from TOP_MAX_SR up only, as below it the band holds formants (a
+ * female /i/ at 8000 Hz reads -8 to +1 dB there). YIN's aperiodicity is not used: weighting the aperiodic frames
+ * down too left the recordings' spikes as they were (their voiced fricatives are periodic, ap 0-0.03) but moved
+ * the female vowels at 8000 Hz past their known limits (F2 median 7.4 -> 8.2-17 %) through a few onset frames. */
+static double reliability(int sr, double hf, double top)
+{
+	double fric = falling(hf, REL_HF_LO, REL_HF_HI);
+	if (sr >= TOP_MAX_SR)
+		fric = fmin(fric, falling(top, REL_TOP_LO, REL_TOP_HI));
+	return REL_MIN + (1 - REL_MIN) * fric;
+}
+
+/* The second analysis: in every frame (not quiet) whose reliability is below TRACK_UNRELIABLE, an LPC of the recording
+ * low-passed at min(LOW_HZ, LOW_FRAC sr), where the voicing dominates F1-F3, and a full-band candidate within
+ * CONFIRM_DIST of one of its candidates is confirmed (conf, CAND_MAX per frame like cands). The low pass is a
+ * resampling to the rate at which that band is the candidates' range (CAND_MAX_FRAC of it), with its own LPC order.
+ * Returns 0, or -1 when out of memory. */
+static int confirm_candidates(const double *x, long n, int sr, const long *centre, const double *rel,
+	const unsigned char *quiet, int nframes, const lpc_cand *cands, const int *ncand, unsigned char *conf)
+{
+	int any = 0;
+	for (int k = 0; k < nframes && !any; k++)
+		any = rel[k] < TRACK_UNRELIABLE && !quiet[k];
+	if (!any)
+		return 0;
+	double fc = LOW_HZ < LOW_FRAC * sr ? LOW_HZ : LOW_FRAC * sr, *xl;
+	int srl = (int)ceil(fc / CAND_MAX_FRAC), len = lpc_window_len(srl), order = lpc_order(srl);
+	if (resample(x, n, sr, srl, &xl) != 0)
+		return -1;
+	long nl = resample_length(n, sr, srl);
+	double *w = malloc(sizeof(double) * len), a[LPC_MAX_ORDER + 1];
+	if (!w) {
+		free(xl);
+		return -1;
+	}
+	for (int k = 0; k < nframes; k++) {
+		if (!(rel[k] < TRACK_UNRELIABLE) || quiet[k])
+			continue;
+		lpc_cand lc[CAND_MAX];
+		lpc_frame(xl, nl, (long)floor(centre[k] * (double)srl / sr + 0.5), len, w);
+		int nc = lpc_burg(w, len, order, a) > 0 ? lpc_candidates(a, order, srl, lc) : 0;
+		const lpc_cand *c = cands + (size_t)k * CAND_MAX;
+		for (int j = 0; j < ncand[k]; j++)
+			for (int i = 0; i < nc; i++)
+				if (fabs(c[j].f - lc[i].f) <= CONFIRM_DIST * lc[i].f)
+					conf[(size_t)k * CAND_MAX + j] = 1;
+	}
+	free(w);
+	free(xl);
+	return 0;
+}
+
 /* ---- the pipeline ---- */
 
 int import_samples(const double *x0, long n0, int sr_in, const import_options *o, kpe_doc *d, import_info *info,
@@ -1009,13 +1090,13 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	double *hf = malloc(sizeof(double) * nframes), *upper = malloc(sizeof(double) * nframes);
 	double *lowrel = malloc(sizeof(double) * nframes), *aps = malloc(sizeof(double) * nframes);
 	double *start = malloc(sizeof(double) * nframes); /* AV's (voiced classes) or AH's (aspiration) start value */
-	unsigned char *fric = malloc(nframes);
-	double *vb = NULL;
+	unsigned char *fric = malloc(nframes), *conf = calloc((size_t)CAND_MAX * nframes, 1);
+	double *vb = NULL, *rel = malloc(sizeof(double) * nframes);
 	kpe_doc tmp = { 0 };
 	int have_tmp = 0;
 	if (!centre || !f0 || !ap || !voiced || !quiet || !cls || !cands || !ncand || !ftr || !btr || !lw || !ls ||
-	    !frames || !level || !hf || !upper || !lowrel || !aps || !start || !fric || spec_init(&spec, sr) != 0 ||
-	    !(w = malloc(sizeof(double) * spec.len))) {
+	    !frames || !level || !hf || !upper || !lowrel || !aps || !start || !fric || !conf || !rel ||
+	    spec_init(&spec, sr) != 0 || !(w = malloc(sizeof(double) * spec.len))) {
 		fail(msg, msglen, "Out of memory.");
 		goto done;
 	}
@@ -1062,9 +1143,12 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 		if (ts.ref[i] > ts.hi[i])
 			ts.ref[i] = ts.hi[i];
 	}
-	for (int k = 0; k < nframes; k++)
+	for (int k = 0; k < nframes; k++) {
 		quiet[k] = level[k] < top - QUIET_DB;
-	if (track_formants(cands, ncand, quiet, nframes, &ts, ftr, btr) != 0) {
+		rel[k] = reliability(sr, hf[k], upper[k]);
+	}
+	if (confirm_candidates(x, n, sr, centre, rel, quiet, nframes, cands, ncand, conf) != 0 ||
+	    track_formants(cands, ncand, quiet, rel, conf, nframes, &ts, ftr, btr) != 0) {
 		fail(msg, msglen, "Out of memory.");
 		goto done;
 	}
@@ -1378,6 +1462,8 @@ done:
 	free(start);
 	free(fric);
 	free(vb);
+	free(rel);
+	free(conf);
 	return rc;
 }
 

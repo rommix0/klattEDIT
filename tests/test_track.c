@@ -50,7 +50,7 @@ static void test_clean(void)
 {
 	clear();
 	formants(0, NF, 520, 1480, 2450, 3600);
-	CHECK(track_formants(cands, ncand, quiet, NF, &male, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
 	int bad = 0;
 	for (int k = 0; k < NF; k++)
 		bad += f[k * 4] != 520 || f[k * 4 + 1] != 1480 || f[k * 4 + 2] != 2450 || f[k * 4 + 3] != 3600 ||
@@ -63,7 +63,7 @@ static void test_missing_candidate(void)
 	clear();
 	for (int k = 0; k < NF; k++) /* F2 rises 1200 -> 1790, and has no candidate in frames 20-24 */
 		formants(k, k + 1, 600, k >= 20 && k < 25 ? 0 : 1200 + 10 * k, 2500, 3500);
-	CHECK(track_formants(cands, ncand, quiet, NF, &male, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
 	for (int k = 18; k < 27; k++) {
 		CHECK_NEAR(f[k * 4 + 1], 1200 + 10 * k, 1e-9); /* interpolated across the gap */
 		CHECK_NEAR(f[k * 4 + 2], 2500, 0);             /* F3 did not drop into F2's slot */
@@ -82,7 +82,7 @@ static void test_spurious_candidates(void)
 	add(41, 3000, 100);
 	for (int k = 50; k < 52; k++)
 		add(k, 2000, 70);
-	CHECK(track_formants(cands, ncand, quiet, NF, &male, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
 	int bad = 0;
 	for (int k = 0; k < NF; k++)
 		bad += f[k * 4] != 500 || f[k * 4 + 1] != 1500 || f[k * 4 + 2] != 2500 || f[k * 4 + 3] != 3500;
@@ -99,7 +99,7 @@ static void test_silence_interpolates(void)
 		add(k, 150 + 37 * k, 300);
 		add(k, 2900, 50);
 	}
-	CHECK(track_formants(cands, ncand, quiet, NF, &male, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
 	for (int k = 19; k <= 40; k++) {
 		double t = (k - 19) / 21.0;
 		CHECK_NEAR(f[k * 4], 400 + t * 300, 1e-9);
@@ -108,7 +108,7 @@ static void test_silence_interpolates(void)
 	}
 	/* all frames quiet or without candidates: the references */
 	clear();
-	CHECK(track_formants(cands, ncand, quiet, NF, &male, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
 	CHECK(f[0] == 500 && f[1] == 1500 && f[2] == 2500 && f[3] == 3500);
 	CHECK(bw[0] >= 40 && bw[0] <= 500);
 }
@@ -123,14 +123,79 @@ static void test_clamps_and_bandwidth_smoothing(void)
 		c[1].bw = 20;                 /* below the clamp */
 		c[3].f = 4700;                /* above F4's range */
 	}
-	CHECK(track_formants(cands, ncand, quiet, NF, &male, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
 	CHECK_NEAR(bw[30 * 4], 70, 0);
 	CHECK_NEAR(bw[10 * 4 + 1], 40, 0);
 	CHECK_NEAR(f[10 * 4 + 3], 4500, 0);
 	track_setup low = male;
 	low.hi[2] = 2400; /* e.g. 0.45 SR below F3's maximum */
-	CHECK(track_formants(cands, ncand, quiet, NF, &low, f, bw) == 0);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &low, f, bw) == 0);
 	CHECK_NEAR(f[10 * 4 + 2], 2400, 0);
+}
+
+static double rel[NF];
+static unsigned char conf[NF * CAND_MAX];
+
+/* A candidate at F2's reference (1500 Hz) beside the true F2 at 1900 Hz for 40 frames: worth taking where the frames
+ * are reliable, but in unreliable ones continuity keeps F2 where it was. */
+static void test_reliability_weighting(void)
+{
+	clear();
+	formants(0, NF, 520, 1900, 2450, 3600);
+	for (int k = 10; k < 50; k++)
+		add(k, 1500, 80);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
+	int at_ref = 0;
+	for (int k = 10; k < 50; k++)
+		at_ref += f[k * 4 + 1] == 1500;
+	CHECK(at_ref == 40);
+	for (int k = 0; k < NF; k++)
+		rel[k] = k >= 10 && k < 50 ? 0.1 : 1;
+	CHECK(track_formants(cands, ncand, quiet, rel, NULL, NF, &male, f, bw) == 0);
+	int kept = 0;
+	for (int k = 0; k < NF; k++)
+		kept += f[k * 4] == 520 && f[k * 4 + 1] == 1900 && f[k * 4 + 2] == 2450 && f[k * 4 + 3] == 3600;
+	CHECK(kept == NF);
+}
+
+/* Two F1 candidates almost equally far from the reference: the confirmed one wins. */
+static void test_confirmation(void)
+{
+	clear();
+	formants(0, NF, 450, 1500, 2500, 3500);
+	for (int k = 0; k < NF; k++)
+		add(k, 560, 60);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
+	CHECK(f[30 * 4] == 450);
+	memset(conf, 0, sizeof conf);
+	for (int k = 0; k < NF; k++)
+		conf[k * CAND_MAX + 1] = 1; /* 560 Hz, the second candidate */
+	CHECK(track_formants(cands, ncand, quiet, NULL, conf, NF, &male, f, bw) == 0);
+	int confirmed = 0;
+	for (int k = 0; k < NF; k++)
+		confirmed += f[k * 4] == 560 && f[k * 4 + 1] == 1500;
+	CHECK(confirmed == NF);
+}
+
+/* A voice bar at 150 Hz that the analysis misses for three frames, with four other candidates there: a reliable
+ * frame must give F1 one of them (it jumps to the clamp at 1300 Hz), an unreliable one may leave F1 empty, and the
+ * gap is interpolated. */
+static void test_empty_track_when_unreliable(void)
+{
+	clear();
+	for (int k = 0; k < NF; k++)
+		formants(k, k + 1, k >= 20 && k < 23 ? 0 : 150, 1450, 2250, 3100);
+	for (int k = 0; k < NF; k++)
+		add(k, 4100, 300);
+	CHECK(track_formants(cands, ncand, quiet, NULL, NULL, NF, &male, f, bw) == 0);
+	CHECK(f[21 * 4] == 1300);
+	for (int k = 0; k < NF; k++)
+		rel[k] = 0.1;
+	CHECK(track_formants(cands, ncand, quiet, rel, NULL, NF, &male, f, bw) == 0);
+	int kept = 0;
+	for (int k = 0; k < NF; k++)
+		kept += f[k * 4] == 150 && f[k * 4 + 1] == 1450 && f[k * 4 + 2] == 2250 && f[k * 4 + 3] == 3100;
+	CHECK(kept == NF);
 }
 
 /* Synthesized F2 glide 1000 -> 2000 Hz under steady F1 and F3: LPC candidates, then the tracker. */
@@ -165,7 +230,7 @@ static void test_synthesized_glide(void)
 		gn[k] = lpc_candidates(a, p, s.sr, gc + k * CAND_MAX);
 	}
 	static double gf[N * TRACK_N], gb[N * TRACK_N];
-	CHECK(track_formants(gc, gn, gq, N, &male, gf, gb) == 0);
+	CHECK(track_formants(gc, gn, gq, NULL, NULL, N, &male, gf, gb) == 0);
 	double worst[3] = { 0 };
 	for (int k = 5; k < N - 5; k++) {
 		double want[3] = { 450, 1000 + 10.0 * k, 2500 };
@@ -191,5 +256,8 @@ void suite_track(void)
 	test_spurious_candidates();
 	test_silence_interpolates();
 	test_clamps_and_bandwidth_smoothing();
+	test_reliability_weighting();
+	test_confirmation();
+	test_empty_track_when_unreliable();
 	test_synthesized_glide();
 }
