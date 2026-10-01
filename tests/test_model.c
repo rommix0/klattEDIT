@@ -251,6 +251,55 @@ static void test_undo_oom_leaves_document_unchanged(void)
 	doc_free(&d);
 }
 
+static void test_crop(void)
+{
+	kpe_doc d;
+	new_doc(&d, 50); /* 10 frames */
+	for (int k = 0; k < 10; k++)
+		doc_set(&d, k, KP_F0, 100 + k);
+	int steps = d.nundo;
+	CHECK(doc_crop(&d, 3, 4) == 0); /* keeps frames 3-6 */
+	CHECK(d.nframes == 4);
+	for (int k = 0; k < 4; k++)
+		CHECK_NEAR(doc_get(&d, k, KP_F0), 103 + k, 0);
+	CHECK(d.nundo == steps + 1); /* one undo step */
+	CHECK(strcmp(doc_undo_label(&d), "Crop") == 0);
+	CHECK(doc_undo(&d) == 0);
+	CHECK(d.nframes == 10);
+	for (int k = 0; k < 10; k++)
+		CHECK_NEAR(doc_get(&d, k, KP_F0), 100 + k, 0);
+	CHECK(d.nundo == steps);
+	CHECK(doc_redo(&d) == 0);
+	CHECK(d.nframes == 4);
+	CHECK_NEAR(doc_get(&d, 0, KP_F0), 103, 0);
+	CHECK_NEAR(doc_get(&d, 3, KP_F0), 106, 0);
+	CHECK(doc_undo(&d) == 0);
+
+	CHECK(doc_crop(&d, 0, 3) == 0); /* the start only */
+	CHECK(d.nframes == 3 && doc_get(&d, 2, KP_F0) == 102);
+	CHECK(doc_undo(&d) == 0);
+	CHECK(doc_crop(&d, 7, 3) == 0); /* the end only */
+	CHECK(d.nframes == 3 && doc_get(&d, 0, KP_F0) == 107);
+	CHECK(doc_undo(&d) == 0);
+
+	steps = d.nundo;
+	CHECK(doc_crop(&d, 0, 10) == -1); /* the whole document: nothing to crop */
+	CHECK(doc_crop(&d, 4, 0) == -1);  /* nothing selected */
+	CHECK(doc_crop(&d, -1, 3) == -1);
+	CHECK(doc_crop(&d, 8, 3) == -1);  /* past the end */
+	doc_begin(&d, "Paint");
+	CHECK(doc_crop(&d, 3, 4) == -1);  /* a transaction is open */
+	doc_end(&d);
+	CHECK(d.nframes == 10 && d.nundo == steps);
+
+	doc_test_fail_alloc(1); /* out of memory: the document stays as it was */
+	CHECK(doc_crop(&d, 3, 4) == -1);
+	doc_test_fail_alloc(0); /* disarmed, in case doc_crop allocated nothing */
+	CHECK(d.nframes == 10 && d.nundo == steps);
+	CHECK_NEAR(doc_get(&d, 9, KP_F0), 109, 0);
+	doc_free(&d);
+}
+
 static void test_globals_without_resample(void)
 {
 	kpe_doc d;
@@ -352,6 +401,7 @@ void suite_model(void)
 	test_paint_rounds_rd_to_hundredths();
 	test_insert_delete_copy();
 	test_undo_oom_leaves_document_unchanged();
+	test_crop();
 	test_globals_without_resample();
 	test_frame_ms_change_resamples();
 	test_redo_after_frame_ms_resample();

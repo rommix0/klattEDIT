@@ -20,6 +20,7 @@
 #define IDM_DELETE        1106
 #define IDM_INSERT        1107
 #define IDM_SELECTALL     1108
+#define IDM_CROP          1109
 #define IDM_PLAY          1301
 #define IDM_PLAYSEL       1302
 #define IDM_GLOBALS       1401

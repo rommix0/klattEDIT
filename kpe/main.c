@@ -422,6 +422,28 @@ static void cmd_delete(void)
 	app_changed(CHG_FRAMES);
 }
 
+/* Crop needs a selection that leaves something out. */
+static int can_crop(void)
+{
+	return has_selection() && app.sel_b - app.sel_a + 1 < app.doc.nframes;
+}
+
+/* Edit > Crop to selection: keeps the selected frames, which then make up the whole (selected) document. */
+static void cmd_crop(void)
+{
+	if (!can_crop())
+		return;
+	if (doc_crop(&app.doc, app.sel_a, app.sel_b - app.sel_a + 1) < 0) {
+		app_error("Out of memory.");
+		return;
+	}
+	app.sel_a = 0;
+	app.sel_b = app.doc.nframes - 1;
+	app_set_cursor(0, 0);
+	app_changed(CHG_FRAMES);
+	plot_fit();
+}
+
 static int insert_point(void)
 {
 	if (has_selection())
@@ -528,7 +550,7 @@ static int blocked_while_open(int id)
 	if (!app.doc.open)
 		return 0;
 	switch (id) {
-	case IDM_DELETE: case IDM_INSERT: case IDM_PASTE: case IDM_CUT:
+	case IDM_DELETE: case IDM_INSERT: case IDM_PASTE: case IDM_CUT: case IDM_CROP:
 	case IDM_UNDO: case IDM_REDO: case IDM_GLOBALS: case IDM_OPTIMIZE:
 	case IDM_NEW: case IDM_OPEN: case IDM_IMPORTWAV:
 		return 1;
@@ -554,6 +576,7 @@ static void command(int id)
 	case IDM_COPY: if (has_selection()) copy_selection(); break;
 	case IDM_PASTE: cmd_paste(); break;
 	case IDM_DELETE: cmd_delete(); break;
+	case IDM_CROP: cmd_crop(); break;
 	case IDM_INSERT: cmd_insert(); break;
 	case IDM_SELECTALL:
 		app.sel_a = 0;
@@ -602,6 +625,7 @@ static void init_menu(HMENU m)
 	EnableMenuItem(m, IDM_CUT, sel ? MF_ENABLED : MF_GRAYED);
 	EnableMenuItem(m, IDM_COPY, sel ? MF_ENABLED : MF_GRAYED);
 	EnableMenuItem(m, IDM_DELETE, sel ? MF_ENABLED : MF_GRAYED);
+	EnableMenuItem(m, IDM_CROP, can_crop() ? MF_ENABLED : MF_GRAYED);
 	EnableMenuItem(m, IDM_PASTE, app.clip ? MF_ENABLED : MF_GRAYED);
 	EnableMenuItem(m, IDM_PLAYSEL, sel ? MF_ENABLED : MF_GRAYED);
 	CheckMenuItem(m, IDM_NARROW, app.narrowband ? MF_CHECKED : MF_UNCHECKED);

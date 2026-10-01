@@ -371,6 +371,19 @@ int doc_delete_frames(kpe_doc *d, int first, int count)
 	return splice_step(d, "Delete frames", first, count, 0, NULL, NULL);
 }
 
+/* One splice of the whole document down to the kept frames: a single undo step, which a deletion before and one
+ * after the range would not be. */
+int doc_crop(kpe_doc *d, int first, int count)
+{
+	if (d->open || first < 0 || count <= 0 || first + count > d->nframes || count >= d->nframes)
+		return -1;
+	double *kept = malloc(sizeof(double) * NP * count);
+	if (!kept)
+		return -1;
+	memcpy(kept, d->frames + NP * first, sizeof(double) * NP * count);
+	return splice_step(d, "Crop", 0, d->nframes, count, kept, NULL);
+}
+
 int doc_copy_frames(const kpe_doc *d, int first, int count, double *out)
 {
 	if (first < 0 || count <= 0 || first + count > d->nframes || !out)

@@ -56,6 +56,9 @@ void doc_paint(kpe_doc *d, int param, double t0_ms, double v0, double t1_ms, dou
 int doc_insert_frames(kpe_doc *d, int at, int count, const double *data); /* data NULL: copies of frame at (or the last) */
 int doc_delete_frames(kpe_doc *d, int first, int count);                  /* at least one frame always remains */
 int doc_copy_frames(const kpe_doc *d, int first, int count, double *out); /* no undo step */
+/* Keeps frames [first, first + count) and deletes the rest, as one undo step labelled "Crop". Refuses (-1) an
+ * empty range and the whole document, since neither crops anything. */
+int doc_crop(kpe_doc *d, int first, int count);
 /* Replaces the globals (clamped, and SR/NFC/SW/SRC rounded to the nearest integer since they are whole numbers).
  * If FRAME_MS changes, the frames are resampled by linear interpolation so the duration stays the same.
  * Returns 1 if resampled, 0 if not, -1 on bad arguments (a transaction still open) or out of memory. */
