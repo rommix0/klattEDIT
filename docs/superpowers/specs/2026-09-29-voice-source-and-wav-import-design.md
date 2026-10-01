@@ -221,8 +221,9 @@ that frame.
 6. **Frame classes:** silence (more than 50 dB below the loudest frame), voiced, voiced fricative, voiceless
    fricative, or aspiration (voiceless but not fricative, e.g. [h]), from the voiced flag and three measures: the
    fraction of energy above 4 kHz (or 0.35·SR when that is lower); the flatness of the top band (power density from
-   0.41·SR to SR/2 against the densest 500 Hz band between 1 kHz and 0.41·SR); and the share of energy below the F1/F2
-   midpoint. A voiced frame is a voiced fricative from a fraction of 0.15 or a top band within 12 dB; an unvoiced frame
+   0.41·SR to SR/2 against the densest 500 Hz band between 1 kHz and 0.41·SR, with SR taken as at most 11025 Hz: above
+   it the band stays at 4520-5512 Hz, where the thresholds were tuned, instead of moving above every formant the DLL
+   has); and the share of energy below the F1/F2 midpoint. A voiced frame is a voiced fricative from a fraction of 0.15 or a top band within 12 dB; an unvoiced frame
    is a fricative from a fraction of 0.25, or from a top band within 25 dB with at most -8 dB of its energy below the
    F1/F2 midpoint (this separates [ʃ] from breathy vowel onsets). The fricative decision is then the majority of the
    non-silent frames within 5 frames, and a fricative run shorter than 40 ms is dropped. Class thresholds are named
@@ -251,7 +252,7 @@ that frame.
      the F1/F2 midpoint) and AH in aspiration frames (overall level) by the dB difference; in voiced frames AH keeps
      its offset from AV. The frication's band powers are the WAV's minus that synthesis's, and AF + A2-A6 are fitted
      to them jointly with a model of the parallel branch (the resonators' complex responses with the DLL's signs,
-     scaled by a reference synthesis), because the parallel resonators leak into each other's bands and a per-band
+     none from a resonator at or above 0.45·SR, which the DLL bypasses, scaled by a reference synthesis), because the parallel resonators leak into each other's bands and a per-band
      correction settles on wrong splits. The largest parallel amplitude is set to 70 dB and AF takes the rest, but at
      least 1 dB, so that the frication of a quiet recording is not switched off (only AF + A*n* matters to the DLL).
      Two more passes synthesize the whole document, scale each band's target by the WAV/synthesis ratio and refit, and
@@ -335,6 +336,23 @@ All automated tests use synthetic audio made by the DLL from known documents, so
   WAV's plus the input gain and the G0 difference. "More than 10 dB louder" is against the WAV's loudest over the
   frame and the glottal period before it (a burst), since the DLL latches AV at each pulse and a decay lags by up to
   a period.
+- **Other sample rates:** the corpus (without the quieter copies) is also synthesized and imported at 8000 Hz and at
+  16000 Hz, and a child's vowels (/i/, /a/, /u/ at F0 260-320 Hz, F4 4400 Hz) at 16000 Hz with the child voice type.
+  Everything else meets the limits above; these known limits are held to what they meet (32- and 64-bit alike):
+
+  | Sample rate, item | Missed limit: measured | Why |
+  |---|---|---|
+  | 8000, `ba.csv` | voiced class 99/114 right (87 %); 8 steady vowel frames with frication | the top band (3280-4000 Hz) holds F4: the vowel's end reads -9 to -12 dB |
+  | 8000, female vowels | F1-F3 median 3.9/7.4/22.3 %, 90th 13.5/56.6/52.9 %; AV median 4 dB; voiced class 171/215 (80 %); a frame 10.7 dB louder | F4 (reference 3900 Hz) lies above the tracks' 3600 Hz limit, so four tracks share three formants, and /i/'s F3 sits in the top band |
+  | 8000, /asa/, /aʃa/, /ava/ | fricative bands 90th 4.0, 3.0 (just above), 6.7 dB | F5 and F6 lie above 0.45·SR, where the DLL bypasses them: the bands they would fill get only leakage from A4 |
+  | 16000, /asa/, /aʃa/ | V/UV 94.9 % | one vowel-offset frame's aperiodicity reads 0.453 against the 0.45 hold (0.448 at 11025 Hz), and the next frame follows it |
+  | 16000, weak /aza/ | fricative bands 90th 4.4 dB | the frication overshoots for a few frames at its onset |
+  | 16000, child vowels | F1/F2 90th 16.0/10.3 % | LPC's harmonic bias at F0 260-320 Hz, which the formant correction reduces but does not remove |
+
+  The 8000 Hz rows fail with classification thresholds tuned at 11025 Hz on the user's recordings; retuning them on
+  the synthetic corpus alone would not carry to real recordings. Sample rates other than 8000, 11025 and 16000 Hz are
+  not tested: a probe at 10000 Hz found further misses (V/UV 93.6 % on `ba.csv`, the weak /z/ not found as a voiced
+  fricative, vowels with frication).
 - **Frame classes of the user's recordings** (manual, from the prototype): S and SH import as fricatives, V, Z and
   ZH as voiced fricatives, the vowels as voiced with aspiration only at their onsets and offsets. Known limits: 30 of
   V's 91 frames get no frication (the voicing alone already reaches the recording's level above 1 kHz), and a

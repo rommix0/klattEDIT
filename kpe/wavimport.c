@@ -43,6 +43,8 @@
 #define FRIC_MIN_FRAMES 8     /* ...and a fricative run shorter than this (40 ms) is none: the user's /ih/ has a 25 ms
                                * noisy patch with a flat upper band mid-vowel */
 #define TOP_FROM_FRAC 0.41    /* import_levels.top: the upper band from this fraction of SR to SR/2... */
+#define TOP_MAX_SR 11025.0    /* ...or of this SR above it (4520-5512 Hz): the band the thresholds were tuned on, at
+                               * 11025 Hz; at 16000 Hz 0.41 SR to SR/2 would lie above every formant the DLL has */
 #define TOP_REF_FROM_HZ 1000.0 /* ...against the densest band of TOP_REF_WIDTH_HZ from here up to it */
 #define TOP_REF_WIDTH_HZ 500.0
 #define TOP_REF_BANDS 40
@@ -76,6 +78,8 @@
                                * strongest AF + An total is below PAR_TOP, would be switched off and could not be
                                * refitted), clear of the 80 dB limit so a correction never clamps */
 #define BAND_RANGE_DB 30.0    /* fricative bands more than this below the frame's strongest weigh less in the fit */
+#define BYPASS_FRAC 0.45      /* the DLL bypasses a resonator at or above this fraction of SR (a parallel one gives
+                               * nothing) */
 
 #define FCORR_PASSES 3        /* formant correction passes (F1-F3 by analysis-by-synthesis): with the voicing
                                * synthesized below clipping (CAL_HEADROOM_DB) two left the female vowels' F1 at
@@ -296,6 +300,7 @@ static void measure(spec_ctx *c, const double *x, long n, long centre, const dou
 	double lo[6], hi[6], total = 0, low = 0, high = 0, band[5] = { 0 }, upper = 0, ref[TOP_REF_BANDS] = { 0 };
 	int nupper = 0, nref[TOP_REF_BANDS] = { 0 };
 	double cut = HF_CUTOFF_HZ < HF_CUTOFF_FRAC * c->sr ? HF_CUTOFF_HZ : HF_CUTOFF_FRAC * c->sr;
+	double top_sr = c->sr < TOP_MAX_SR ? c->sr : TOP_MAX_SR, top_lo = TOP_FROM_FRAC * top_sr, top_hi = top_sr / 2;
 	band_edges(f, c->sr, lo, hi);
 	double low_edge = 0.5 * (f[0] + f[1]);
 	for (int b = 1; b <= c->nfft / 2; b++) {
@@ -308,9 +313,11 @@ static void measure(spec_ctx *c, const double *x, long n, long centre, const dou
 		for (int i = 0; i < 5; i++)
 			if (fr >= lo[i + 1] && fr < hi[i + 1])
 				band[i] += p;
-		if (fr >= TOP_FROM_FRAC * c->sr) {
-			upper += p;
-			nupper++;
+		if (fr >= top_lo) {
+			if (fr <= top_hi) {
+				upper += p;
+				nupper++;
+			}
 		} else if (fr >= TOP_REF_FROM_HZ) {
 			int q = (int)((fr - TOP_REF_FROM_HZ) / TOP_REF_WIDTH_HZ);
 			if (q < TOP_REF_BANDS) {
@@ -715,7 +722,7 @@ static void fric_model(const spec_ctx *c, const double *fr, const double *g, dou
 		double fc = f[j + 1] < c->sr * 0.5 ? f[j + 1] : c->sr * 0.5;
 		rc[j] = -exp(-2 * PI * bw[j] / c->sr);
 		rb[j] = 2 * exp(-PI * bw[j] / c->sr) * cos(2 * PI * fc / c->sr);
-		ra[j] = 1 - rb[j] - rc[j];
+		ra[j] = f[j + 1] < BYPASS_FRAC * c->sr ? 1 - rb[j] - rc[j] : 0; /* the DLL drops a bypassed one */
 	}
 	memset(q, 0, sizeof(double) * 125);
 	for (int bin = 1; bin <= c->nfft / 2; bin++) {

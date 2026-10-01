@@ -38,6 +38,16 @@
 #define BOUNDARY_FRAMES 2      /* compared frames are at least 10 ms from a class boundary */
 #define BAND_RANGE_DB 30.0     /* fricative bands more than this below the frame's strongest band are not compared */
 
+/* The limits a round trip is held to: the spec's, or for a known limit at another sample rate (spec 4.6) what it
+ * meets there. */
+typedef struct {
+	double vuv, f_median[3], f_p90[3], av_db, band_db, cls, louder_db;
+	int vowel_fric;
+} limits;
+
+static const limits spec_limits = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN },
+	{ LIM_F_P90, LIM_F_P90, LIM_F_P90 }, LIM_AV_DB, LIM_BAND_DB, LIM_CLASS, LIM_LOUDER_DB, 0 };
+
 typedef struct {
 	double ms, v;
 } pt;
@@ -209,8 +219,8 @@ static double *pcm_to_double(const synth_result *s)
  * overload in the resynthesis, its peak at or below PEAK_MAX_DB, and its frame levels (frames within LEVEL_RANGE_DB
  * of the WAV's loudest) within LIM_LEVEL_DB of the WAV's and never more than LIM_LOUDER_DB louder than the WAV's
  * loudest over the frame and the glottal period before it (a burst; a decay lags by up to a period, as the DLL
- * latches AV at each pulse). */
-static void round_trip_gain(const char *name, const kpe_doc *src, int voice, double gain_db)
+ * latches AV at each pulse). lim holds the limits that a known limit (spec 4.6) changes. */
+static void round_trip_lim(const char *name, const kpe_doc *src, int voice, double gain_db, const limits *lim)
 {
 	int same_source = src->globals[KG_SRC] == 1;
 	synth_result s;
@@ -348,26 +358,26 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 	printf("; steady vowel frames with frication %d; steady fricative frames with AF %d/%d; resynthesis peak "
 		"%.1f dBFS\n", vowel_fric, fric_af, fric_n, ypeak);
 	CHECK(n0 > 0 && f0m < LIM_F0_MEDIAN);
-	CHECK(vuv >= LIM_VUV);
+	CHECK(vuv >= lim->vuv);
 	CHECK(nlev > 0 && (high ? lm : lp) <= LIM_LEVEL_DB);
-	CHECK(louder <= LIM_LOUDER_DB);
+	CHECK(louder <= lim->louder_db);
 	for (int i = 0; i < 3; i++) {
-		CHECK(nfm > 0 && fm[i] < LIM_F_MEDIAN);
-		CHECK(fp[i] < LIM_F_P90);
+		CHECK(nfm > 0 && fm[i] < lim->f_median[i]);
+		CHECK(fp[i] < lim->f_p90[i]);
 	}
 	if (same_source) {
-		CHECK(nav > 0 && (high ? avm : avp) <= LIM_AV_DB);
+		CHECK(nav > 0 && (high ? avm : avp) <= lim->av_db);
 		CHECK(nrd > 0 && (high ? rdm : rdp) <= LIM_RD);
 	}
 	for (int c = 0; c < CLS_COUNT; c++)
-		if (class_n[c] >= MIN_CLASS_FRAMES && !(class_ok[c] >= LIM_CLASS * class_n[c])) {
+		if (class_n[c] >= MIN_CLASS_FRAMES && !(class_ok[c] >= lim->cls * class_n[c])) {
 			printf("    class %d: %d of %d right\n", c, class_ok[c], class_n[c]);
 			CHECK(0);
 		}
-	CHECK(vowel_fric == 0);
+	CHECK(vowel_fric <= lim->vowel_fric);
 	CHECK(fric_af >= LIM_FRIC_AF * fric_n);
 	if (nband)
-		CHECK(bp <= LIM_BAND_DB);
+		CHECK(bp <= lim->band_db);
 	free(e0);
 	free(tf0);
 	free(elev);
@@ -382,6 +392,11 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 	synth_result_free(&sy);
 	import_info_free(&info);
 	doc_free(&d);
+}
+
+static void round_trip_gain(const char *name, const kpe_doc *src, int voice, double gain_db)
+{
+	round_trip_lim(name, src, voice, gain_db, &spec_limits);
 }
 
 static void round_trip(const char *name, const kpe_doc *src, int voice)
@@ -426,6 +441,105 @@ static void test_round_trips(void)
 	doc_free(&d);
 	rd_sweep(&d);
 	round_trip("Rd sweep 0.4-2.5", &d, VOICE_MALE);
+	doc_free(&d);
+}
+
+/* A child's vowels /i/, /a/, /u/ at F0 260-320 Hz (Peterson & Barney's children, F2 of /i/ at its 3000 Hz limit). */
+static void child_vowels(kpe_doc *d)
+{
+	new_doc(d, 1000, 1);
+	TRACK(d, KP_AV, { 0, 0 }, { 40, 0 }, { 60, 60 }, { 920, 60 }, { 960, 0 });
+	TRACK(d, KP_F0, { 0, 280 }, { 300, 320 }, { 700, 260 }, { 1000, 270 });
+	TRACK(d, KP_F1, { 0, 370 }, { 250, 370 }, { 380, 1030 }, { 580, 1030 }, { 710, 430 });
+	TRACK(d, KP_F2, { 0, 3000 }, { 250, 3000 }, { 380, 1370 }, { 580, 1370 }, { 710, 1170 });
+	TRACK(d, KP_F3, { 0, 3730 }, { 250, 3730 }, { 380, 3170 }, { 580, 3170 }, { 710, 3260 });
+	TRACK(d, KP_F4, { 0, 4400 });
+	round_doc(d);
+}
+
+/* src with its sample rate set to sr (the frames unchanged), synthesized and imported at sr, held to lim. */
+static void round_trip_sr(const char *name, const kpe_doc *src, int voice, int sr, const limits *lim)
+{
+	kpe_doc d;
+	double g[NG], *frames = malloc(sizeof(double) * NP * src->nframes);
+	memcpy(frames, src->frames, sizeof(double) * NP * src->nframes);
+	memcpy(g, src->globals, sizeof g);
+	g[KG_SR] = sr;
+	CHECK(doc_init_from(&d, g, src->nframes, frames) == 0);
+	char full[96];
+	snprintf(full, sizeof full, "%s at %d Hz", name, sr);
+	round_trip_lim(full, &d, voice, 0, lim);
+	doc_free(&d);
+}
+
+static void ba_doc(kpe_doc *d)
+{
+	csv_report r;
+	if (csv_load(L"../../samples/ba.csv", d, &r) != 0) {
+		CHECK(0);
+		new_doc(d, 800, 0); /* silence: the round trip then fails as well */
+	}
+}
+
+static void asa_doc(kpe_doc *d) { fricative(d, 0); }
+static void aza_doc(kpe_doc *d) { fricative(d, 50); }
+static void weak_z_doc(kpe_doc *d) { fric_doc(d, &weak_z); }
+static void sh_doc(kpe_doc *d) { fric_doc(d, &sh); }
+static void v_doc(kpe_doc *d) { fric_doc(d, &v_fric); }
+
+/* The known limits of spec 4.6 at 8000 and 16000 Hz: each the spec's limits but for the measures it misses, which
+ * hold it to what it meets (measured: see the spec). At 8000 Hz the top band (3280-4000 Hz) holds F4, so vowels with
+ * a strong F4 read as voiced fricatives; F5 and F6 lie above 0.45 SR, where the DLL bypasses them, so the bands they
+ * would fill get only leakage; and a female voice's F4 (reference 3900 Hz) lies above the tracks' 3600 Hz limit, so
+ * the tracker splits F1-F3 among four tracks. At 16000 Hz one borderline frame's aperiodicity (0.453 against the
+ * 0.45 hold) unvoices a vowel offset, the weak /z/'s frication overshoots at its onset, and a child's F1 and F2 at
+ * F0 260-320 Hz keep LPC's harmonic bias. */
+static const limits ba_8k = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { LIM_F_P90, LIM_F_P90, LIM_F_P90 },
+	LIM_AV_DB, LIM_BAND_DB, 0.85, LIM_LOUDER_DB, 8 };
+static const limits female_8k = { LIM_VUV, { LIM_F_MEDIAN, 0.08, 0.23 }, { 0.14, 0.57, 0.53 }, 4.0, LIM_BAND_DB, 0.79,
+	11.0, 0 };
+static const limits asa_8k = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { LIM_F_P90, LIM_F_P90, LIM_F_P90 },
+	LIM_AV_DB, 4.5, LIM_CLASS, LIM_LOUDER_DB, 0 };
+static const limits sh_8k = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { LIM_F_P90, LIM_F_P90, LIM_F_P90 },
+	LIM_AV_DB, 3.5, LIM_CLASS, LIM_LOUDER_DB, 0 };
+static const limits v_8k = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { LIM_F_P90, LIM_F_P90, LIM_F_P90 },
+	LIM_AV_DB, 7.0, LIM_CLASS, LIM_LOUDER_DB, 0 };
+static const limits vuv_16k = { 0.94, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { LIM_F_P90, LIM_F_P90, LIM_F_P90 },
+	LIM_AV_DB, LIM_BAND_DB, LIM_CLASS, LIM_LOUDER_DB, 0 };
+static const limits weak_z_16k = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN },
+	{ LIM_F_P90, LIM_F_P90, LIM_F_P90 }, LIM_AV_DB, 4.5, LIM_CLASS, LIM_LOUDER_DB, 0 };
+static const limits child_16k = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { 0.165, 0.11, LIM_F_P90 },
+	LIM_AV_DB, LIM_BAND_DB, LIM_CLASS, LIM_LOUDER_DB, 0 };
+
+/* The corpus at 8000 Hz (the lowest SR in use) and 16000 Hz (the dialog's advice for children's voices), and a
+ * child's vowels at 16000 Hz. */
+static void test_round_trips_sr(void)
+{
+	static const struct {
+		const char *name;
+		void (*make)(kpe_doc *);
+		int voice;
+		const limits *lim[2]; /* at 8000 and 16000 Hz */
+	} corpus[] = {
+		{ "ba.csv", ba_doc, VOICE_MALE, { &ba_8k, &spec_limits } },
+		{ "female vowels", female_vowels, VOICE_FEMALE, { &female_8k, &spec_limits } },
+		{ "/asa/", asa_doc, VOICE_MALE, { &asa_8k, &vuv_16k } },
+		{ "/aza/", aza_doc, VOICE_MALE, { &spec_limits, &spec_limits } },
+		{ "weak /aza/", weak_z_doc, VOICE_MALE, { &spec_limits, &weak_z_16k } },
+		{ "/asha/", sh_doc, VOICE_MALE, { &sh_8k, &vuv_16k } },
+		{ "/ava/", v_doc, VOICE_MALE, { &v_8k, &spec_limits } },
+		{ "Rd sweep 0.4-2.5", rd_sweep, VOICE_MALE, { &spec_limits, &spec_limits } },
+	};
+	static const int rates[2] = { 8000, 16000 };
+	kpe_doc d;
+	for (int i = 0; i < 2; i++)
+		for (size_t j = 0; j < sizeof corpus / sizeof corpus[0]; j++) {
+			corpus[j].make(&d);
+			round_trip_sr(corpus[j].name, &d, corpus[j].voice, rates[i], corpus[j].lim[i]);
+			doc_free(&d);
+		}
+	child_vowels(&d);
+	round_trip_sr("child vowels", &d, VOICE_CHILD, 16000, &child_16k);
 	doc_free(&d);
 }
 
@@ -653,6 +767,7 @@ void suite_wavimport(void)
 	test_refusals();
 	test_result_document();
 	test_round_trips();
+	test_round_trips_sr();
 	test_aspiration();
 	test_normalization();
 	test_speed();
