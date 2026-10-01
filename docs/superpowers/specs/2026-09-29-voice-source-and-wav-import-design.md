@@ -184,7 +184,8 @@ only to synthesize. The GUI adds the menu command and dialog.
 
 - **WAV reader:** RIFF/WAVE with PCM (8-, 16-, 24- or 32-bit integer) or IEEE float (32-bit), including
   WAVE_FORMAT_EXTENSIBLE with those subformats. Any channel count is mixed to mono by averaging. Anything else is
-  refused with a message naming the format.
+  refused with a message naming the format, and so is a sample rate outside 1 Hz-1 MHz (the message names it) or a
+  file with more samples than a buffer of doubles can address.
 - **Resampler** to the target SR: windowed sinc (Kaiser window), any ratio; passband flat within 0.1 dB up to 0.9 × the
   lower Nyquist frequency, stopband at least 60 dB down.
 - A recording longer than the document maximum (10 minutes) is refused; a silent one (peak below -60 dBFS) is

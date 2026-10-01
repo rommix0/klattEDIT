@@ -324,6 +324,17 @@ static void test_refusals(void)
 	n = build(&s, buf);
 	expect_refusal(buf, n, "channels");
 
+	/* the sample rate (bytes 24-27 of the header) must lie in 1..1000000 Hz: a larger one would let a file of
+	 * 2^29 or more samples pass the length check and overflow the sample buffer's size on 32-bit */
+	s.channels = 1;
+	n = build(&s, buf);
+	p32(buf + 24, 0);
+	expect_refusal(buf, n, "sample rate 0 Hz");
+	p32(buf + 24, 1000001);
+	expect_refusal(buf, n, "sample rate 1000001 Hz");
+	p32(buf + 24, 3000000000u);
+	expect_refusal(buf, n, "sample rate 3000000000 Hz");
+
 	/* a RIFF/WAVE file with a fmt chunk but no data chunk, and one with no fmt chunk */
 	s.channels = 1;
 	s.bits = 16;
@@ -356,6 +367,13 @@ static void test_too_long_refused_before_reading(void)
 	if (!read_ok(&s, 1.0, &w, msg))
 		return; /* exactly at the limit: accepted */
 	CHECK(w.n == 1000);
+	wav_data_free(&w);
+
+	s.sr = 1000000; /* the highest sample rate read */
+	s.nbytes = 4;
+	if (!read_ok(&s, 0, &w, msg))
+		return;
+	CHECK(w.n == 2 && w.sr == 1000000);
 	wav_data_free(&w);
 }
 

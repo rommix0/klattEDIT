@@ -1,4 +1,5 @@
 /* wavin.c - see wavin.h. */
+#include <limits.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -12,6 +13,7 @@
 #define TAG_EXTENSIBLE 0xFFFE
 
 #define READ_BLOCK 65536 /* bytes of sample data converted per fread */
+#define MAX_SR 1000000   /* highest sample rate read (keeps it an int) */
 
 static uint32_t get32(const unsigned char *p)
 {
@@ -165,9 +167,14 @@ int wav_read(const wchar_t *path, double max_seconds, wav_data *out, char *msg, 
 		fclose(f);
 		return fail(msg, msglen, "Unsupported WAV format: %u-bit float (32-bit float can be read).", bits);
 	}
-	if (channels == 0 || sr == 0) {
+	if (channels == 0) {
 		fclose(f);
-		return fail(msg, msglen, "Unsupported WAV format: %u channels at %lu Hz.", channels, (unsigned long)sr);
+		return fail(msg, msglen, "Unsupported WAV format: %u channels.", channels);
+	}
+	if (sr < 1 || sr > MAX_SR) {
+		fclose(f);
+		return fail(msg, msglen, "Unsupported WAV format: sample rate %lu Hz (1 to %d Hz can be read).",
+			(unsigned long)sr, MAX_SR);
 	}
 	if (!have_data) {
 		fclose(f);
@@ -180,6 +187,10 @@ int wav_read(const wchar_t *path, double max_seconds, wav_data *out, char *msg, 
 		fclose(f);
 		return fail(msg, msglen, "The recording is too long (%.1f s; at most %.0f s can be imported).",
 			(double)frames / sr, max_seconds);
+	}
+	if ((unsigned long long)frames > SIZE_MAX / sizeof(double) || frames > LONG_MAX) {
+		fclose(f);
+		return fail(msg, msglen, "The recording is too large (%lld samples) to be read.", frames);
 	}
 	double *x = malloc(sizeof(double) * (size_t)(frames > 0 ? frames : 1));
 	size_t chunk = (size_t)(READ_BLOCK / block > 0 ? READ_BLOCK / block : 1) * (size_t)block;
