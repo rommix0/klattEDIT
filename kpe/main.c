@@ -329,6 +329,14 @@ static void cmd_open(void)
 		open_path(path);
 }
 
+static void stop_playback(void)
+{
+	audio_stop();
+	app.play_ms = -1;
+	KillTimer(app.main, 1);
+	InvalidateRect(app.plot, NULL, FALSE);
+}
+
 /* File > Import WAV: the WAV is read first, then the part of it chosen in the dialog becomes a new unsaved document
  * (not an undo step, like Open); on any error the current document stays as it was. */
 static void cmd_import_wav(void)
@@ -344,6 +352,7 @@ static void cmd_import_wav(void)
 		app_error(msg);
 		return;
 	}
+	stop_playback(); /* the dialog's own Play must not move the main window's playhead */
 	if (!dlg_import(app.main, &o, &wav, &first, &end)) {
 		wav_data_free(&wav);
 		return;
@@ -515,9 +524,7 @@ static void cmd_globals(void)
 static void play(int selection)
 {
 	if (audio_playing()) {
-		audio_stop();
-		app.play_ms = -1;
-		InvalidateRect(app.plot, NULL, FALSE);
+		stop_playback();
 		return;
 	}
 	if (!app.snd.pcm || (selection && !has_selection()))

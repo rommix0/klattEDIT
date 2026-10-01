@@ -47,7 +47,7 @@ static void smooth_run(double *v, double *u, int a, int b, const double *w, int 
 
 int opt_smooth(double *v, int count, double frame_ms, double width_ms, int runs)
 {
-	if (!(width_ms > 0) || count <= 0)
+	if (!(width_ms > 0) || !(frame_ms > 0) || count <= 0)
 		return 0;
 	double sigma = width_ms / 2.3548 / frame_ms; /* in frames */
 	int h = (int)floor(3 * sigma);

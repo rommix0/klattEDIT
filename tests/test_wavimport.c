@@ -552,7 +552,7 @@ static void test_round_trips_sr(void)
 }
 
 /* Fast's known limit (spec 4.6): with one formant correction pass the female vowels' F1 keeps more of LPC's harmonic
- * bias (90th percentile 11.4 %). */
+ * bias (90th percentile 10.8 %). */
 static const limits female_fast = { LIM_VUV, { LIM_F_MEDIAN, LIM_F_MEDIAN, LIM_F_MEDIAN }, { 0.12, LIM_F_P90, LIM_F_P90 },
 	LIM_AV_DB, LIM_BAND_DB, LIM_CLASS, LIM_LOUDER_DB, 0, LIM_RD };
 
@@ -757,6 +757,34 @@ static void test_range_import(void)
 	CHECK(strstr(msg, "Cannot open") != NULL);
 	synth_result_free(&s);
 	doc_free(&src);
+}
+
+/* An empty or silent recording is refused when it is read, before the Import dialog opens (spec 4.2), with the
+ * message import_samples gives, and nothing is left to free. */
+static void test_read_refuses_no_sound(void)
+{
+	static short zeros[4000];
+	wav_data wd;
+	char msg[256];
+	CHECK(wav_write(L"read_empty.wav", zeros, 0, 11025) == 0);
+	memset(&wd, 0xAA, sizeof wd);
+	CHECK(import_read(L"read_empty.wav", &wd, msg, sizeof msg) == -1);
+	CHECK(strstr(msg, "No sound found") != NULL);
+	CHECK(wd.x == NULL && wd.n == 0);
+	CHECK(wav_write(L"read_silent.wav", zeros, 4000, 11025) == 0);
+	memset(&wd, 0xAA, sizeof wd);
+	CHECK(import_read(L"read_silent.wav", &wd, msg, sizeof msg) == -1);
+	CHECK(strstr(msg, "No sound found") != NULL);
+	CHECK(wd.x == NULL && wd.n == 0);
+	zeros[100] = 1; /* 1/32768 is -90 dBFS: still silent */
+	CHECK(wav_write(L"read_faint.wav", zeros, 4000, 11025) == 0);
+	CHECK(import_read(L"read_faint.wav", &wd, msg, sizeof msg) == -1);
+	CHECK(strstr(msg, "No sound found") != NULL);
+	zeros[100] = 1000; /* -30 dBFS: sound */
+	CHECK(wav_write(L"read_quiet.wav", zeros, 4000, 11025) == 0);
+	CHECK(import_read(L"read_quiet.wav", &wd, msg, sizeof msg) == 0);
+	CHECK(wd.n == 4000 && wd.x != NULL);
+	wav_data_free(&wd);
 }
 
 /* A steady /a/ at AV 60 with aspiration ah (0: none) and Rd rd, imported: returns the median AH over its steady
@@ -1065,6 +1093,7 @@ void suite_wavimport(void)
 	test_hampel();
 	test_aspiration_hysteresis();
 	test_range_import();
+	test_read_refuses_no_sound();
 	test_rd_runs();
 	test_aspiration();
 	test_normalization();

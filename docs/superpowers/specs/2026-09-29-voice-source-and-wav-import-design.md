@@ -453,8 +453,11 @@ formant correction of a high voice about 0.6 s per pass per minute (1.9 s for it
 | Normal | every 12th | 3 | 2 | 4.3 s | 6.9 s |
 | Best | every 4th | 3 | 2 | 7.1 s | 10.8 s |
 
-A high voice is held to 5 s with Fast only (the speed test); Normal and Best take longer. The import stays
-synchronous; if the speed test ever misses 5 s, a worker thread with progress and cancel is designed then.
+A high voice is held to 5 s with Fast only (the speed test); Normal and Best take longer. These figures are for
+speech-like material: a recording that is mostly frication takes about three times as long (13-18 s per 60 s on the
+32-bit build; /z/ throughout took 17.7 s, 12.8 s with Fast), because the frication fit runs in every fricative
+frame on every calibration pass. That was already so before the presets (the same inputs took 14.6-19.0 s at
+bbb9fa2). The import stays synchronous; if the speed test ever misses 5 s, a worker thread with progress and cancel is designed then.
 
 ## 5. Changes to the base spec
 

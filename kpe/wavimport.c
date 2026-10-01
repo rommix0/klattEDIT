@@ -143,8 +143,8 @@
 
 /* The analysis presets (IMPORT_*): Normal is the analysis above (RD_STEP, FCORR_PASSES, CAL_PASSES); Best fits Rd
  * on every 4th voiced frame; Fast fits it on every 24th and runs one formant correction pass and one calibration
- * correction: a 60 s high voice took 6.9 s with Normal's numbers and 4.4 s with these on the 32-bit build, and the
- * female vowels' F1 90th-percentile error rose from 9.4 to 11.4 % (the import spec's known limits list it). */
+ * correction: a 60 s high voice took 6.9 s with Normal's numbers and 4.0 s with these on the 32-bit build, and the
+ * female vowels' F1 90th-percentile error rose from 8.4 to 10.8 % (the import spec's known limits list it). */
 typedef struct {
 	int rd_step, fcorr_passes, cal_passes;
 } preset;
@@ -751,9 +751,6 @@ void import_aspiration(const double *aps, const unsigned char *cls, int nframes,
 	}
 }
 
-/* A run's first and last frame are left alone: their window reaches one side only, so the start of an onset or a
- * decay looks like a spike there (a /s/'s vowel offset rose 7 dB, and the resynthesis's level error in the frames
- * after it from 5-10 to 11-16 dB). */
 /* F1-F4 smoothed with Optimize's default widths (opt_smooth: a 3-frame median, then a Gaussian) within each run of
  * frames of one class, never across a class boundary. Sets moved[k] for every frame whose formants changed. Returns
  * 0, or -1 when out of memory. */
@@ -784,6 +781,9 @@ static int smooth_formants(double *frames, int nframes, const unsigned char *cls
 	return 0;
 }
 
+/* A run's first and last frame are left alone: their window reaches one side only, so the start of an onset or a
+ * decay looks like a spike there (a /s/'s vowel offset rose 7 dB, and the resynthesis's level error in the frames
+ * after it from 5-10 to 11-16 dB). */
 int import_hampel(double *frames, int nframes, const unsigned char *cls, int p, unsigned char *changed)
 {
 	int amp = opt_smooth_runs(p);
@@ -1131,6 +1131,22 @@ static int confirm_candidates(const double *x, long n, int sr, const long *centr
 
 /* ---- the pipeline ---- */
 
+/* 0 if x[0..n) has sound (its peak into *peak_out); else -1 with "No sound found" in msg (empty, or a peak below
+ * NO_SOUND_DBFS). */
+static int check_sound(const double *x, long n, double *peak_out, char *msg, size_t msglen)
+{
+	if (n == 0)
+		return fail(msg, msglen, "No sound found (the recording is empty).");
+	double peak = 0;
+	for (long i = 0; i < n; i++)
+		if (fabs(x[i]) > peak)
+			peak = fabs(x[i]);
+	if (!(peak >= pow(10, NO_SOUND_DBFS / 20)))
+		return fail(msg, msglen, "No sound found (the recording's peak is below %.0f dBFS).", NO_SOUND_DBFS);
+	*peak_out = peak;
+	return 0;
+}
+
 int import_samples(const double *x0, long n0, int sr_in, const import_options *o, kpe_doc *d, import_info *info,
 	char *msg, size_t msglen)
 {
@@ -1143,16 +1159,11 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	if (!vt || !x0 || n0 < 0 || sr_in <= 0 || !sr_ok(o->sr) || o->quality < 0 || o->quality >= IMPORT_QUALITY_COUNT)
 		return fail(msg, msglen, "Cannot import: bad arguments.");
 	const preset *ps = &presets[o->quality];
-	if (n0 == 0)
-		return fail(msg, msglen, "No sound found (the recording is empty).");
 	if (n0 * 1000.0 / sr_in > DOC_MAX_DURATION_MS)
 		return fail(msg, msglen, "The recording is longer than 10 minutes.");
-	double peak = 0;
-	for (long i = 0; i < n0; i++)
-		if (fabs(x0[i]) > peak)
-			peak = fabs(x0[i]);
-	if (!(peak >= pow(10, NO_SOUND_DBFS / 20)))
-		return fail(msg, msglen, "No sound found (the recording's peak is below %.0f dBFS).", NO_SOUND_DBFS);
+	double peak;
+	if (check_sound(x0, n0, &peak, msg, msglen) != 0)
+		return -1;
 
 	int sr = o->sr, rc = -1;
 	double *x = NULL;
@@ -1589,6 +1600,11 @@ int import_read(const wchar_t *path, wav_data *wd, char *msg, size_t msglen)
 	if (wav_read(path, DOC_MAX_DURATION_MS / 1000, wd, msg, msglen) != 0) {
 		if (msglen && strstr(msg, "too long"))
 			snprintf(msg, msglen, "The recording is longer than 10 minutes.");
+		return -1;
+	}
+	double peak;
+	if (check_sound(wd->x, wd->n, &peak, msg, msglen) != 0) {
+		wav_data_free(wd);
 		return -1;
 	}
 	return 0;

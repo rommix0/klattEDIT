@@ -557,6 +557,9 @@ static LRESULT CALLBACK wave_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 			wave_notify(h);
 		}
 		return 0;
+	case WM_CAPTURECHANGED: /* lost mid-drag (Alt+Tab): the drag is over */
+		wave.dragging = 0;
+		return 0;
 	case WM_LBUTTONDBLCLK:
 		wave.a = 0;
 		wave.b = wave.wav->n;

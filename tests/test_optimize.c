@@ -200,6 +200,9 @@ static void test_smooth_edge_cases(void)
 	CHECK(memcmp(v, orig, sizeof v) == 0);
 	CHECK(opt_smooth(v, 30, 5, -3, 1) == 0);
 	CHECK(memcmp(v, orig, sizeof v) == 0);
+	CHECK(opt_smooth(v, 30, 0, 25, 0) == 0); /* a frame length of 0 or less: off, too */
+	CHECK(opt_smooth(v, 30, -5, 25, 1) == 0);
+	CHECK(memcmp(v, orig, sizeof v) == 0);
 	for (int i = 0; i < 30; i++)
 		v[i] = 1800;
 	CHECK(opt_smooth(v, 30, 5, 25, 0) == 0); /* a constant stays constant, ends included */
