@@ -688,14 +688,23 @@ static void test_hampel(void)
 	CHECK(d.frames[(size_t)12 * NP + KP_AV] == 60);
 	CHECK(d.frames[(size_t)9 * NP + KP_AV] == 60);
 
-	/* a two-frame run of another class: left alone, and its neighbours are not filtered across it */
+	/* a two-frame run of another class, 1500 like the steady frames: left alone, and the windows of the frames next to
+	 * it stop at the class boundary. Frames 8 and 13 (1600) sit next to the run's end (1700): against their own run's
+	 * frames the median is 1550 and the threshold 222, so they stay; a window that took in the other class's 1500
+	 * would have median 1500, deviation 0, threshold 45, and replace them. */
 	for (int k = 0; k < N; k++) {
 		cls[k] = k == 10 || k == 11 ? CLS_FRIC : CLS_VOICED;
-		d.frames[(size_t)k * NP + KP_F2] = k == 10 ? 2600 : k == 11 ? 1000 : k == 9 ? 1700 : 1500;
+		d.frames[(size_t)k * NP + KP_F2] = k == 8 || k == 13 ? 1600 : k == 9 || k == 12 ? 1700 : 1500;
 	}
-	CHECK(import_hampel(d.frames, N, cls, KP_F2, NULL) == 0);
-	CHECK(d.frames[(size_t)10 * NP + KP_F2] == 2600 && d.frames[(size_t)11 * NP + KP_F2] == 1000);
-	CHECK(d.frames[(size_t)9 * NP + KP_F2] == 1700); /* the last frame of its run */
+	memset(changed, 0, sizeof changed);
+	CHECK(import_hampel(d.frames, N, cls, KP_F2, changed) == 0);
+	int kept = 1;
+	for (int k = 0; k < N; k++)
+		kept &= d.frames[(size_t)k * NP + KP_F2] == (k == 8 || k == 13 ? 1600 : k == 9 || k == 12 ? 1700 : 1500);
+	CHECK(kept);
+	CHECK(changed[8] == 0 && changed[13] == 0);
+	CHECK(d.frames[(size_t)10 * NP + KP_F2] == 1500 && d.frames[(size_t)11 * NP + KP_F2] == 1500);
+	CHECK(d.frames[(size_t)9 * NP + KP_F2] == 1700 && d.frames[(size_t)12 * NP + KP_F2] == 1700); /* a run's ends */
 	doc_free(&d);
 }
 
