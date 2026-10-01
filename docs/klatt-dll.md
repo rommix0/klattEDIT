@@ -4,7 +4,7 @@
 D.H. Klatt (1980), "Software for a cascade/parallel formant synthesizer", JASA 67, 971-995. They are built from
 the same source and produce the same samples. Version 1.1 adds a selectable Liljencrants-Fant (LF) voicing source
 shaped by Rd, Rd's tilt on the 1980 source, flutter (FL) and diplophonia (DI), and brings the noise source in line
-with the paper; see "Signal path" below.
+with the paper; see "Signal path" below. Version 1.2 adds the speaking speed SPD, a time scale of the frames.
 
 ## Using it
 
@@ -38,27 +38,33 @@ KlattDestroy(h);
 
 | Function | Returns |
 |---|---|
-| `KlattVersion()` | `KLATT_VERSION` (10100 = 1.1.0) |
-| `KlattParamCount(kind)` | 23 for `KLATT_FRAME`, 20 for `KLATT_GLOBAL` |
+| `KlattVersion()` | `KLATT_VERSION` (10200 = 1.2.0) |
+| `KlattParamCount(kind)` | 23 for `KLATT_FRAME`, 21 for `KLATT_GLOBAL` |
 | `KlattParamInfo(kind, i, &info)` | name, unit, description, min, max, default |
 | `KlattParamIndex(kind, name)` | the index, case-insensitive; `KLATT_ERR_ARG` if unknown |
 | `KlattErrorText(code)` | a short English message |
 | `KlattCreate(globals, &h)` | a handle; `globals` holds `KLATT_NUM_GLOBAL` values in table order |
-| `KlattMaxFrameSamples(h)` | the largest number of samples one frame can produce |
+| `KlattMaxFrameSamples(h)` | the largest number of samples one frame can produce: the frame length's ceiling |
 | `KlattSynthFrame(h, frame, out, max)` | samples written; `frame` holds `KLATT_NUM_FRAME` values |
 | `KlattOverloadCount(h)` | samples clipped to 16 bits since create or reset |
 | `KlattReset(h, seed)` | clears filters, noise, frame clock and the overload count |
 | `KlattDestroy(h)` | frees the handle |
 
-Version 1.1 appended Rd and DI to the frame parameters and SRC and FL to the globals; no earlier index changed. A
-program built against the 1.0 header passes arrays two values short and must be rebuilt.
+Version 1.1 appended Rd and DI to the frame parameters and SRC and FL to the globals, and version 1.2 appended SPD
+to the globals; no earlier index changed. A program built against an older header passes a globals array one or
+three values short and must be rebuilt.
 
 - Values outside a parameter's limits are clamped, NaN becomes the minimum, and frequencies are also kept below
   SR/2.
 - Globals are fixed for a handle's lifetime; create a new handle to change them.
 - A handle must be used by one thread at a time. Separate handles are independent.
-- Frame *k* covers samples `floor(k·SR·FRAME_MS/1000)` to `floor((k+1)·SR·FRAME_MS/1000)`, so the total length is
-  exact even when a frame is not a whole number of samples (5 ms at 11025 Hz alternates 55 and 56).
+- Frame *k* covers samples `floor(k·SR·FRAME_MS/(1000·SPD))` to `floor((k+1)·SR·FRAME_MS/(1000·SPD))`, so the total
+  length is exact even when a frame is not a whole number of samples (5 ms at 11025 Hz alternates 55 and 56 at
+  SPD = 1, and is 27.5625 samples at SPD = 2).
+- **SPD** (speaking speed, 0.25-4, default 1) only changes how long each frame's values last: F0, the formants, the
+  pulse shape, flutter, diplophonia, the noise and the AF/AH ramps run in real time, so pitch and timbre stay and
+  the document plays SPD times as fast. Values still change at frame boundaries. At SPD = 1 every sample is the same
+  as in version 1.1. `KlattReset` restarts the frame count.
 - The same inputs and seed always give the same samples.
 
 ### `klatt_param_info` layout

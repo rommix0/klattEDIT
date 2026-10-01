@@ -211,13 +211,31 @@ that frame.
    candidates for F1-F4; the cost adds the distance from the voice type's reference values, the candidates'
    bandwidths and the frame-to-frame jump. Frames more than 40 dB below the loudest frame take no part in the search
    (no local and no transition cost) and their tracks are interpolated linearly across them. Tracks are clamped to the
-   parameter ranges and below 0.45·SR.
+   parameter ranges and below 0.45·SR. (Speed/crop/smoothing design, 5.2.) Each frame has a reliability r from its
+   frication measures with neutral formants (step 6): 1 below an energy fraction of 0.1 above the cutoff, falling to
+   0.1 at 0.3, and likewise from a top-band flatness of -20 dB to -5 dB (from 11025 Hz up only: below it the top
+   band holds formants); r multiplies the frame's local cost (distance and bandwidth), so that in unreliable frames
+   continuity decides. A frame with r below 0.7 may also leave one track empty although it has candidates for all
+   four (the empty-track cost is unchanged), because a /v/'s full-band analysis loses the voice bar in some frames
+   and every state would otherwise give F1 the next formant; and it gets a second analysis: an LPC of the recording
+   low-passed at min(3000 Hz, 0.3·SR) (a resampling to the rate whose candidate range, 0.45 of it, ends there; at
+   11025 Hz 6667 Hz with order 10), where a full-band candidate within 10 % of a low-band one is confirmed and its
+   local cost halved. Low-band candidates are not states. YIN's aperiodicity is not part of r: it left the user's
+   recordings as they were and moved the female vowels at 8000 Hz past their known limits.
 4. **Bandwidths B1-B3:** from the chosen candidates, median-smoothed over 7 frames and clamped to 40-500 Hz.
 5. **Formant correction** (voices whose median voiced F0 is at least 150 Hz, where LPC's harmonic bias matters): three
-   analysis-by-synthesis passes synthesize the document's voicing (12 dB below the default G0, so that it does not
+   analysis-by-synthesis passes (one with the Fast preset, 4.7) synthesize the document's voicing (12 dB below the default G0, so that it does not
    clip), run the same LPC on it, and move F1-F3 by the WAV's value minus the synthesis's (the synthesis candidate
    nearest the current value within 25 %, at most 20 % per pass). Lower voices skip it: it gained them less than it
-   cost. The WAV's band levels (step 8) are then measured again with the corrected formants.
+   cost. Then the spike filter (below) runs on F1-F4 and B1-B3 within each class run (step 6's classes), F1-F4 are
+   smoothed with Optimize's default widths (F1 10, F2 15, F3 20, F4 25 ms: a 3-frame median, then a Gaussian of that
+   full width at half maximum; `opt_smooth`) within each class run, never across a class boundary, and the WAV's
+   band levels (step 8) are measured again where the formants changed.
+   **Spike filter** (Hampel 1974): within each run of frames of one class, a value further than max(3 × 1.4826 ×
+   MAD, floor) from the median of the five frames centred on it (the run's frames only) is replaced by that median;
+   the floor is 3 % for formants and bandwidths, 3 dB for amplitudes. An amplitude of 0 is neither changed nor used;
+   runs shorter than 3 frames and a run's first and last frame are left alone (a one-sided window took a decay's
+   start for a spike: a /s/'s vowel offset rose 7 dB).
 6. **Frame classes:** silence (more than 50 dB below the loudest frame), voiced, voiced fricative, voiceless
    fricative, or aspiration (voiceless but not fricative, e.g. [h]), from the voiced flag and three measures: the
    fraction of energy above 4 kHz (or 0.35·SR when that is lower); the flatness of the top band (power density from
@@ -228,7 +246,9 @@ that frame.
    F1/F2 midpoint (this separates [ʃ] from breathy vowel onsets). The fricative decision is then the majority of the
    non-silent frames within 5 frames, and a fricative run shorter than 40 ms is dropped. Class thresholds are named
    constants tuned on the test corpus and the user's recordings; their comments give the measured ranges.
-7. **Rd** (every 12th frame of class voiced, 60 ms apart; not in voiced fricatives, whose residual is frication):
+7. **Rd** (every 12th frame of class voiced, 60 ms apart, with the Normal preset, every 24th with Fast and every 4th
+   with Best, and only on a frame with three voiced frames on either side, so the window lies in the vowel; not in
+   voiced fricatives, whose residual is frication):
    inverse-filter the pre-emphasized, windowed frame with its own LPC coefficients; golden-
    section search Rd in 0.3-2.7 to minimize the squared difference between the residual's mean-normalized dB
    spectrum and a candidate's, over F0 to min(5·F0, 5000 Hz) (fextr's Method B), to a bracket of 0.1, first within
@@ -248,7 +268,8 @@ that frame.
      frames), which is meaningful because `K_NOISE` makes AH and AV equally loud at equal dB, but only from ap = 0.25
      on; below it AH is 0. Real vowels read 0.01-0.2 in their steady part, and with a lower threshold they resynthesize
      breathy. The cost: aspiration more than about 7 dB below AV is not imported. Voiced fricatives get AH 0 (their
-     aperiodic energy is the frication).
+     aperiodic energy is the frication). Within a voiced run AH stays on, once on, until ap falls below 0.20, and an
+     on-run shorter than 3 frames is turned off.
    - Then calibration: the first pass synthesizes voicing and aspiration only and corrects AV (low-band level below
      the F1/F2 midpoint) and AH in aspiration frames (overall level) by the dB difference; in voiced frames AH keeps
      its offset from AV. The frication's band powers are the WAV's minus that synthesis's, and AF + A2-A6 are fitted
@@ -256,8 +277,9 @@ that frame.
      none from a resonator at or above 0.45·SR, which the DLL bypasses, scaled by a reference synthesis), because the parallel resonators leak into each other's bands and a per-band
      correction settles on wrong splits. The largest parallel amplitude is set to 70 dB and AF takes the rest, but at
      least 1 dB, so that the frication of a quiet recording is not switched off (only AF + A*n* matters to the DLL).
-     Two more passes synthesize the whole document, scale each band's target by the WAV/synthesis ratio and refit, and
-     correct AV and AH again.
+     Two more passes (one with the Fast preset) synthesize the whole document, scale each band's target by the
+     WAV/synthesis ratio and refit, and correct AV and AH again. After the last pass the spike filter runs on AV, AF,
+     AH and A2-A6.
    - Guards: the calibration syntheses run 12 dB below the default G0 (measured as at the default), so that they do
      not clip. A pass moves AV or AH by at most 12 dB: where F1 and F2 lie close and broad the cascade's gain is
      20 dB above the reference vowel's, and full corrections through the 25 ms window overshoot from frame to frame.
@@ -270,7 +292,8 @@ that frame.
      voicing sounds on for up to a period, and a decay cannot follow the WAV's faster than that.
    - Silence frames get all amplitudes 0. Values are clamped to their ranges and rounded (Rd to 0.01).
 9. **Result:** globals at their defaults except SR (the target), SRC = 1 and FRAME_MS = 5; the frames as analysed.
-   Optionally simplified with Optimize (every frame grid, default tolerances). Finally G0 is set to the whole number
+   Optionally simplified with Optimize's defaults (smoothing F1-F4 by 10/15/20/25 ms, then every frame grid,
+   default tolerances). Finally G0 is set to the whole number
    that puts the resynthesis's peak at or just below -1 dBFS: each synthesis without overload predicts that G0 (the
    output is linear in G0; one that overloads is followed by one 24 dB lower), the first prediction coming from the
    verification synthesis, and G0 is accepted only when a synthesis of the final document at that G0 predicts it
@@ -289,10 +312,14 @@ References above the parameter maximum or 0.45·SR are clamped.
 
 ### 4.5 Editor
 
-- **File > Import WAV…** (asks to save unsaved changes first), then a file dialog, then a dialog with voice type
-  (default adult male), target SR (default 11025; a note says children's voices need about 16000 so their formants
-  fit below Nyquist), and "Simplify with Optimize afterwards" (off by default). The choices are remembered for the
-  session.
+- **File > Import WAV…** (asks to save unsaved changes first), then a file dialog; the WAV is read (its errors are
+  shown then), then a dialog with a waveform strip of the whole recording (a min/max envelope per pixel column, the
+  selected range shaded; drag selects a range snapped to whole milliseconds, a double-click all of it; Start and End
+  in seconds with 3 decimals, which can be typed; Play plays the range at the recording's own rate; the default is
+  the whole recording), voice type (default adult male), target SR (default 11025; a note says children's voices
+  need about 16000 so their formants fit below Nyquist), Analysis: Fast / Normal / Best (default Normal), and
+  "Simplify with Optimize afterwards" (off by default). Only the range is analysed; one shorter than 50 ms is
+  refused with a message. The choices other than the range are remembered for the session.
 - While it runs: wait cursor and "Analyzing…" in the status bar.
 - The result opens as a new unsaved document titled after the WAV; Save asks for a name, suggesting
   `<wav name>.csv`. Import is not an undo step (like Open).
@@ -305,9 +332,19 @@ All automated tests use synthetic audio made by the DLL from known documents, so
 
 - **Units:** WAV reader for every supported format and every refusal; resampler (tone frequency and level, image
   rejection); Burg on a known AR process (coefficients within 1 %); the root finder on polynomials with known roots;
-  Viterbi on hand-made candidate sequences, including a missing and a spurious candidate; the import's refusals
-  (silent, empty, too long); Rd over two vowels (Rd 0.6, then 2.0) apart by silence, whose second vowel's frames
-  before its first fit are within 0.3 of 2.0.
+  Viterbi on hand-made candidate sequences, including a missing and a spurious candidate, the reliability weighting
+  (a candidate at the reference taken in reliable frames, continuity kept in unreliable ones), a confirmed
+  candidate preferred, and an unreliable frame leaving F1 empty where its candidate is missing; the spike filter on
+  hand-made tracks (a spike removed, a step kept, a short run and a run's ends untouched, zeros kept) and the
+  aspiration hysteresis; the import's refusals (silent, empty, too long); Rd over two vowels (Rd 0.6, then 2.0)
+  apart by silence, whose second vowel's frames before its first fit are within 0.3 of 2.0; importing a range of a
+  recording gives the same document as importing a WAV of just that range.
+- **Stronger frication:** the /aza/ and /ava/ with their frication 6 dB stronger: F1-F3 within 25 % (90th
+  percentile) in the fricative (the /aza/'s F3 read 39 % before the reliability weighting, 8 % now) and no formant
+  spike (the speed/crop/smoothing design's 5.4 definition: more than max(8 %, 30 Hz) from the mean of the
+  neighbours, inside a class run).
+- **Presets:** the corpus at 11025 Hz imported with Best meets every limit; with Fast it meets them except the
+  female vowels' F1 90th percentile, 10.8 % (one formant correction pass instead of three; Normal 8.4 %).
 - **Round trip:** `ba.csv` (also 10, 20 and 30 dB quieter), a female-range vowel sequence, /asa/ (also 10, 20, 30
   and 48 dB quieter), /aza/, a /z/ with 10 dB weaker frication, an /aʃa/ with its frication at 2-4 kHz, an /ava/ with
   flat frication over damped voicing, and an Rd sweep (all but `ba.csv` with SRC = 1), synthesized and imported,
@@ -333,7 +370,7 @@ All automated tests use synthetic audio made by the DLL from known documents, so
   least 200 Hz, AV, Rd and the frame levels are judged on their medians: a 25 ms LPC cannot resolve B1 when the
   harmonics are 200 Hz or more apart, and the Rd fit and AV then compensate the wrong bandwidth, which leaves the
   levels above the F1/F2 midpoint off by a few dB (female vowels: AV median 2 dB, 90th
-  percentile 7; Rd median 0.12, 90th 1.6; frame levels median 0.6 dB, 90th 3.2). The import scales its input to a
+  percentile 6; Rd median 0.17, 90th 1.4; frame levels median 0.7 dB, 90th 3.3). The import scales its input to a
   -1 dBFS peak and normalizes G0, so AV is compared with the source's plus that input gain (rounded to AV's 1 dB step),
   and the resynthesis's levels (fricative bands within 30 dB of the frame's strongest, and whole frames) with the
   WAV's plus the input gain and the G0 difference. "More than 10 dB louder" is against the WAV's loudest over the
@@ -346,34 +383,77 @@ All automated tests use synthetic audio made by the DLL from known documents, so
   | Sample rate, item | Missed limit: measured | Why |
   |---|---|---|
   | 8000, `ba.csv` | voiced class 99/114 right (87 %); 8 steady vowel frames with frication | the top band (3280-4000 Hz) holds F4: the vowel's end reads -9 to -12 dB |
-  | 8000, female vowels | F1-F3 median 3.9/7.4/22.3 %, 90th 13.5/56.6/52.9 %; AV median 4 dB; voiced class 171/215 (80 %); a frame 10.7 dB louder | F4 (reference 3900 Hz) lies above the tracks' 3600 Hz limit, so four tracks share three formants, and /i/'s F3 sits in the top band |
-  | 8000, /asa/, /aʃa/, /ava/ | fricative bands 90th 4.0, 3.0 (just above), 6.7 dB | F5 and F6 lie above 0.45·SR, where the DLL bypasses them: the bands they would fill get only leakage from A4 |
+  | 8000, female vowels | F1-F3 median 3.9/7.4/24.7 %, 90th 11.0/56.8/52.8 %; AV median 3 dB; voiced class 171/215 (80 %); a frame 9.3 dB louder | F4 (reference 3900 Hz) lies above the tracks' 3600 Hz limit, so four tracks share three formants, and /i/'s F3 sits in the top band; the spike filter and the smoothing took F3's median from 22.3 to 24.7 % |
+  | 8000, /asa/, /aʃa/, /ava/ | fricative bands 90th 3.4, 3.0, 7.4 dB | F5 and F6 lie above 0.45·SR, where the DLL bypasses them: the bands they would fill get only leakage from A4 (the spike filter moved the /ava/ from 6.7 dB) |
   | 16000, /asa/, /aʃa/ | V/UV 94.9 % | one vowel-offset frame's aperiodicity reads 0.453 against the 0.45 hold (0.448 at 11025 Hz), and the next frame follows it |
-  | 16000, weak /aza/ | fricative bands 90th 4.4 dB | the frication overshoots for a few frames at its onset |
-  | 16000, child vowels | F1/F2 90th 16.0/10.3 % | LPC's harmonic bias at F0 260-320 Hz, which the formant correction reduces but does not remove |
+  | 16000, child vowels | F1/F2 90th 14.9/8.2 %; Rd median 0.30 (just past the 0.3 limit) | LPC's harmonic bias at F0 260-320 Hz, which the formant correction reduces but does not remove; Rd is fitted with the smoothed formants (0.28 before) |
+
+  The weak /aza/ at 16000 Hz, a known limit before the speed/crop/smoothing design (fricative bands 90th 4.4 dB), now
+  meets the spec's limit (2.5 dB): fitting Rd only where its window lies in the vowel fixed its onset. With the spike
+  filter alone five measures moved past their limits (the weak /aza/ at 8000 Hz 3.1 dB, the /aʃa/ at 16000 Hz 3.4 dB
+  and the female vowels' F1 90th at 16000 Hz 10.0 % besides the two above); with the smoothing added these three meet
+  the spec's limits again (3.0 dB, 2.9 dB, 8.9 %), and three are kept as known limits (the female F3 median and the
+  /ava/ at 8000 Hz, the child's Rd median at 16000 Hz). The user accepted them; they miss by little, at 8000 and
+  16000 Hz only, and the corpus at 11025 Hz meets every limit.
 
   The 8000 Hz rows fail with classification thresholds tuned at 11025 Hz on the user's recordings; retuning them on
   the synthetic corpus alone would not carry to real recordings. Sample rates other than 8000, 11025 and 16000 Hz are
   not tested: a probe at 10000 Hz found further misses (V/UV 93.6 % on `ba.csv`, the weak /z/ not found as a voiced
   fricative, vowels with frication).
 - **Frame classes of the user's recordings** (manual, from the prototype): S and SH import as fricatives, V, Z and
-  ZH as voiced fricatives, the vowels as voiced with aspiration only at their onsets and offsets. Known limits: 30 of
-  V's 91 frames get no frication (the voicing alone already reaches the recording's level above 1 kHz), and a
-  plosive burst shorter than 40 ms imports as aspiration.
-- **Speed:** a 60 s WAV imports in at most 5 s (32-bit build, this machine), measured by a test that reports the time.
+  ZH as voiced fricatives, the vowels as voiced with aspiration only at their onsets and offsets. Known limits: 3 of
+  V's 91 frames get no frication (the voicing alone already reaches the recording's level above 1 kHz; 30 before
+  the speed/crop/smoothing design, when V's F1 often took the next formant), and a plosive burst shorter than 40 ms
+  imports as aspiration.
+- **Speed:** a 60 s WAV imports in at most 5 s (32-bit build, this machine), measured by a test that reports the time:
+  an adult male voice with Normal, and a high voice (the female vowels repeated, median F0 about 220 Hz) with Fast.
 - **Manual:** checklist items for the dialog and error messages, and listening checks on the user's recordings in
-  `fextr_sept2026\wavs` (AE, IH, OW, S, SH, V, Z, ZH). Those recordings are not committed; their origin is unknown.
+  `C:\Users\abart\Desktop\fwavs` (AE, IH, OW, S, SH, V, Z, ZH; 48 kHz; adult male; imported at 11025 Hz). Those
+  recordings are not committed; their origin is unknown.
+- **Spikes in the user's recordings** (speed/crop/smoothing design, 5.1 and 5.4): frames inside a run of one class
+  whose value differs from the mean of its two neighbours by more than max(8 %, 30 Hz) (F1-F4) or 6 dB (AV, AF, AH),
+  before that design, with the reliability weighting and the spike filter, and with the import's formant smoothing
+  added (measured by a probe, not a test; all three columns with this definition):
+
+  | Recording, class (frames) | F1 | F2 | F3 | F4 | AV | AF | AH |
+  |---|---|---|---|---|---|---|---|
+  | V, voiced fricative (91) | 12 / 15 / 25 | 15 / 3 / 0 | 12 / 4 / 0 | 0 / 4 / 0 | 9 / 0 / 0 | 13 / 10 / 9 | 0 / 0 / 0 |
+  | Z, voiced fricative (158) | 0 / 0 / 0 | 0 / 0 / 0 | 11 / 5 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 1 / 0 / 2 | 0 / 0 / 0 |
+  | ZH, voiced fricative (168) | 9 / 0 / 0 | 11 / 0 / 0 | 10 / 2 / 0 | 8 / 6 / 0 | 10 / 0 / 0 | 15 / 5 / 5 | 0 / 0 / 0 |
+  | AE, IH, OW, voiced (63-88) | 3-7 / 3-7 / 0-1 | 0-2 / 0-1 / 0 | 0-1 / 0-1 / 0 | 0-2 / 0-2 / 0 | 0-2 / 0-3 / 0 | 0 | 4-7 / 2-6 / 1-6 |
+  | AE, IH, OW, aspiration (30-39) | 0-6 / 0-4 / 0 | 0 / 0-1 / 0 | 0 | 0 | 0 | 0 | 0-2 / 0-2 / 0 |
+  | S, SH, fricative (40, 28) | 6, 2 / 7, 0 / 3, 0 | 2, 6 / 4, 0 / 0, 0 | 2, 4 / 1, 0 / 0, 0 | 0, 1 / 0, 2 / 0, 0 | 0 | 2, 0 / 2, 3 / 3, 3 | 0 |
+
+  Over the eight recordings the formant spikes went from 52, 37, 40 and 12 (F1-F4) to 30, 0, 0 and 0, AV's from 21
+  to 0, AF's from 31 to 22, AH's from 20 to 9; AH no longer switches on for fewer than 3 frames in a vowel. The
+  /v/'s F1 above 1 kHz (the next formant taken for F1) went from 26 of its 91 frames to 3. What remains: the /v/'s F1
+  rises to 600-1270 Hz in three stretches of 4-8 frames, where the full-band analysis lost the voice bar and the
+  tracker took the next formant; the smoothing turns each into a rounded bump whose shoulders count as spikes (25),
+  and in those frames the voicing, with its F1 that high, already fills the bands the frication would, so AF drops
+  to 0-16 dB (most of the /v/'s 9 AF spikes). The /ʒ/'s 5 AF spikes are single frames where the recording's
+  frication, as the 25 ms analysis measures it, is 7-9 dB weaker in every band at once: the calibration follows the
+  WAV frame by frame, AF follows its strongest band, and the five-frame filter keeps them because the frame-to-frame
+  spread of the frication level (2-4 dB MAD) sets its limit at 9-18 dB. The vowels' AH spikes are the edges of
+  on-runs of 3 frames or more.
 
 ### 4.7 Performance
 
-The import of a 60 s, 11025 Hz WAV (the speed test, an adult male voice) takes 4.5 s on the 32-bit build (2.9 s on
-64-bit): analysis 0.9 s, Rd 1.6 s, calibration, verification and normalization 1.9 s. That needed Rd on every 12th
+The import of a 60 s, 11025 Hz WAV (the speed test, an adult male voice, Normal) takes 4.3 s on the 32-bit build
+(2.9 s on 64-bit): analysis 1.1 s (0.2 s of it the second analysis of 5.2), Rd 1.6 s, calibration, verification
+and normalization 1.7 s. That needed Rd on every 12th
 voiced frame, three calibration syntheses, a half-size complex FFT for real input, 5 refined YIN dips and tabulated
 resonator trig; the verification synthesis added 0.3 s, and so does a second normalization synthesis when the
 verification lowered the loudest frames (as in the speed test). A 48 kHz recording adds 0.6 s of resampling; the
-formant correction of a high voice about 0.6 s per pass per minute (1.9 s for its three passes). Known limit: a
-60 s female-voice WAV (the round trip's female vowels repeated) takes 6.8 s on 32-bit (5.5 s before the
-calibration guards and the third correction pass), over the 5 s the speed test holds. The import stays
+formant correction of a high voice about 0.6 s per pass per minute (1.9 s for its three passes). The presets
+(speed/crop/smoothing design, 3.3), 60 s on 32-bit:
+
+| Preset | Rd fitted on | Correction passes | Calibration passes after the first | Male voice | High voice |
+|---|---|---|---|---|---|
+| Fast | every 24th voiced frame | 1 | 1 | 3.6 s | 4.0 s |
+| Normal | every 12th | 3 | 2 | 4.3 s | 6.9 s |
+| Best | every 4th | 3 | 2 | 7.1 s | 10.8 s |
+
+A high voice is held to 5 s with Fast only (the speed test); Normal and Best take longer. The import stays
 synchronous; if the speed test ever misses 5 s, a worker thread with progress and cancel is designed then.
 
 ## 5. Changes to the base spec

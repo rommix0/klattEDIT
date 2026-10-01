@@ -53,7 +53,7 @@ kpe_open/
   kpe/            the editor
     model.c/.h      document, edit operations, undo (no Win32)
     csvio.c/.h      CSV pair load/save (no Win32)
-    optimize.c/.h   track simplification (no Win32)
+    optimize.c/.h   track smoothing and simplification (no Win32)
     spectro.c/.h    FFT and spectrogram image (no Win32)
     wavout.c/.h     WAV writer (no Win32)
     synthrun.c/.h   runs a document through the DLL (no Win32)
@@ -64,6 +64,7 @@ kpe_open/
     pitch.c/.h      YIN pitch and voicing (no Win32)
     track.c/.h      formant tracking (no Win32)
     wavimport.c/.h  WAV import pipeline (no Win32)
+    waverange.c/.h  the Import WAV dialog's range on a waveform (no Win32)
     app.h, resource.h  state and IDs shared by the GUI files
     main.c          window, menus, accelerators
     strips.c        strips, axes, painting, cursor, selection
@@ -112,8 +113,8 @@ describe the 1980 source as it still is.
 
 ### 4.2 Parameters
 
-Per-frame parameters (23) and globals (20): Table I of the paper, plus Rd and DI (frame) and SRC and FL (global)
-added in DLL 1.1. The paper's SR and NWS become `SR` and `FRAME_MS`.
+Per-frame parameters (23) and globals (21): Table I of the paper, plus Rd and DI (frame) and SRC and FL (global)
+added in DLL 1.1, and SPD (global) added in DLL 1.2. The paper's SR and NWS become `SR` and `FRAME_MS`.
 
 - **Min/max** are this design's hard limits, somewhat wider than the paper's typical ranges so that, for example,
   high F1 values can be drawn. The DLL clamps to them, and also clamps frequencies below SR/2. The editor's default
@@ -163,15 +164,19 @@ added in DLL 1.1. The paper's SR and NWS become `SR` and `FRAME_MS`.
 | frame | DI | diplophonia | % | 0 | 100 | 0 |
 | global | SRC | voicing source: 0 = Klatt 1980, 1 = LF | - | 0 | 1 | 0 |
 | global | FL | flutter | % | 0 | 100 | 0 |
+| global | SPD | speaking speed: 1 = as written | - | 0.25 | 4 | 1 |
 
 The frame parameter order is AV AF AH AVS F0 F1 F2 F3 F4 FNZ AN A1 A2 A3 A4 A5 A6 AB B1 B2 B3 Rd DI (indices
-0-22). The global order is as listed, SW to NFC, then SRC and FL (indices 0-19).
+0-22). The global order is as listed, SW to NFC, then SRC, FL and SPD (indices 0-20).
 
 ### 4.3 Frame timing
 
-A frame is `SR·FRAME_MS/1000` samples, which need not be whole (5 ms at 11025 Hz is 55.125). The synthesizer keeps
-a running fractional sample count, so frame *k* ends at sample `floor((k+1)·SR·FRAME_MS/1000)`. Frames are
-therefore 55 or 56 samples long and the total length is exact.
+A frame is `SR·FRAME_MS/(1000·SPD)` samples, which need not be whole (5 ms at 11025 Hz is 55.125 at SPD = 1). The
+synthesizer keeps a running fractional sample count, so frame *k* ends at sample `floor((k+1)·SR·FRAME_MS/(1000·SPD))`.
+At SPD = 1 frames are therefore 55 or 56 samples long, the total length is exact, and every sample is the same as in
+DLL 1.1. SPD (DLL 1.2) only changes how long each frame's values last: F0, the formants, the pulse shape, flutter,
+diplophonia, the noise and the AF/AH ramps run in real time, and values still change at frame boundaries.
+`KlattMaxFrameSamples` returns the ceiling of the frame length.
 
 ### 4.4 API
 
@@ -190,7 +195,7 @@ typedef struct {
 } klatt_param_info;
 
 int         KlattVersion(void);
-int         KlattParamCount(int kind);                          /* 23 or 20 (1.0: 21 or 18) */
+int         KlattParamCount(int kind);                          /* 23 or 21 (1.1: 23 or 20; 1.0: 21 or 18) */
 int         KlattParamInfo(int kind, int index, klatt_param_info *out);
 int         KlattParamIndex(int kind, const char *name);        /* case-insensitive; negative if unknown */
 const char *KlattErrorText(int code);
@@ -203,6 +208,7 @@ void KlattReset(klatt_h h, unsigned seed);                      /* clears filter
 void KlattDestroy(klatt_h h);
 ```
 
+- `KlattVersion` returns 10200 (1.2.0).
 - Globals are fixed for a handle's lifetime. To change them, create a new handle.
 - Out-of-range values are clamped silently; `NULL` pointers and bad indices return `KLATT_ERR_ARG`.
 - A handle is used by one thread at a time; separate handles are independent.
@@ -214,8 +220,8 @@ void KlattDestroy(klatt_h h);
 
 - **Menu bar:** File, Edit, Sound, Parameters, View, Help.
 - **Left panel:** a checkbox per parameter, grouped (Source: F0, AV, AF, AH, AVS; Voice: Rd, DI; Cascade: F1-F4
-  on the spectrogram, B1-B3; Parallel: A1-A6, AB; Nasal: FNZ, AN), then the globals as read-only text. The panel
-  scrolls vertically when it is taller than the window.
+  on the spectrogram, B1-B3; Parallel: A1-A6, AB; Nasal: FNZ, AN), then the main globals as read-only text (SR,
+  FRAME_MS, SPD, SRC, NFC, SW, G0, F5, F6). The panel scrolls vertically when it is taller than the window.
 - **Strips:** one strip per ticked parameter, stacked, each with its own Y axis showing units and automatically
   chosen ticks, and horizontal grid lines at the ticks.
 - **Spectrogram strip:** the spectrogram of the current synthesis with the ticked F1-F4 tracks drawn over it.
@@ -232,17 +238,25 @@ void KlattDestroy(klatt_h h);
 - **Formant strip:** a drag edits the visible formant track nearest the press point.
 - **Line tool:** Shift+drag sets a straight ramp from the press point to the release point.
 - **Selection:** drag in the time ruler to select a time range across all strips. Edit menu: Cut, Copy, Paste,
-  Delete frames, Insert frames (inserted frames copy the frame at the cursor).
+  Delete frames, Crop to selection, Insert frames (inserted frames copy the frame at the cursor).
+- **Crop to selection** (Ctrl+Shift+X): keeps the selected frames and deletes the rest as one undo step labelled
+  "Crop"; the selection then covers the whole document and the view fits it. Disabled when nothing is selected or
+  the whole document is. The model does it as one splice of the document (`doc_crop`, the mechanism frame deletion
+  uses): its transactions (`doc_begin`/`doc_end`) group value edits only, and structural edits are refused inside
+  one.
 - **Undo/Redo:** unlimited. Each step stores only the frames and parameters it changed (or the old globals).
   Edits from strips, the frame table and all dialogs go through the same stack.
 
 ### 5.3 Synthesis and sound
 
 - After every completed edit (mouse release, cell commit, dialog OK), the document is synthesized again through
-  `klatt32.dll` and the spectrogram is recomputed, so there is no separate Synthesize command.
+  `klatt32.dll` and the spectrogram is recomputed, so there is no separate Synthesize command. This display
+  synthesis is always at SPD = 1, so the strips, the spectrogram and the frame table stay aligned.
 - The status bar reports an overload if any samples saturated.
 - **Sound:** Space plays or stops; Shift+Space plays the selection. A playhead line moves across the strips.
-  Playback uses `waveOut`.
+  Playback uses `waveOut`. Play, Play selection and Export WAV synthesize at the document's SPD; the playhead maps
+  the playing sample back to document time with the SPD frame formula (`synth_sample_ms`), so it moves over the
+  frames being heard.
 - File > Export WAV… writes 16-bit mono PCM at SR.
 
 ### 5.4 Spectrogram
@@ -262,23 +276,33 @@ void KlattDestroy(klatt_h h);
 - **Parameters > Optimize…:** see 5.6.
 - **File > New…:** duration in ms and the globals (defaults from the table). The document starts as silence
   (AV = AF = AH = AVS = 0) with the frame parameters at their defaults.
-- **File > Import WAV…:** asks to save unsaved changes, then a file dialog, then voice type, target sample rate and
-  "Simplify with Optimize afterwards"; the recording opens as a new unsaved document titled after the WAV. See
-  `2026-09-29-voice-source-and-wav-import-design.md`, section 4.
+- **File > Import WAV…:** asks to save unsaved changes, then a file dialog; the WAV is read (errors are reported
+  then), and the dialog shows a waveform strip of the whole recording with the range to import (drag to select,
+  snapped to whole milliseconds; double-click for all of it; Start and End in seconds; Play), then voice type,
+  target sample rate, Analysis (Fast / Normal / Best) and "Simplify with Optimize afterwards". Only the range is
+  analysed (at least 50 ms); the recording opens as a new unsaved document titled after the WAV. See
+  `2026-09-29-voice-source-and-wav-import-design.md`, section 4, and `2026-09-30-speed-crop-smoothing-design.md`.
 - **Help > Parameter reference:** the parameter table, read from the DLL.
 - **Help > About:** a clean-room editor inspired by IPOX's Klatt Parameter Editor; contains no original IPOX code.
 
 ### 5.6 Parameter optimization
 
-- **Dialog:** tracks to optimize (checklist, defaulting to the visible strips), range (selection or whole file),
-  grid (every frame, 5 ms or 10 ms; grids that are not a multiple of FRAME_MS are disabled), and a tolerance per
-  unit: 20 Hz for formants and bandwidths, 2 Hz for F0, 1 dB for amplitudes, 0.05 for Rd, 2 % for DI.
+- **Dialog:** tracks to optimize (checklist, defaulting to the visible strips; each row shows the track's
+  smoothing width, "F2 · 15 ms"), "Smoothing (ms)" for the selected tracks (0 is off; widths are remembered for the
+  session, defaults F1 10, F2 15, F3 20, F4 25 ms, every other track 0), range (selection or whole file), grid
+  (every frame, 5 ms or 10 ms; grids that are not a multiple of FRAME_MS are disabled), and a tolerance per unit:
+  20 Hz for formants and bandwidths, 2 Hz for F0, 1 dB for amplitudes, 0.05 for Rd, 2 % for DI.
+- **Smoothing** (`opt_smooth`), per checked track with a width w > 0, before the simplification: a 3-frame running
+  median, then a Gaussian whose full width at half maximum is w (σ = w / 2.3548), truncated at ±3σ and renormalized
+  at the range's ends. Amplitude tracks are smoothed only within runs of non-zero values, so an onset stays an
+  onset.
 - **Algorithm:** Douglas-Peucker restricted to grid times. It keeps the fewest breakpoints for which linear
   interpolation stays within the tolerance of the original values, always keeps the range's endpoints, and then
   refills the frames between breakpoints by linear interpolation. Steps larger than the tolerance (such as
   voicing onsets) survive.
 - **Preview:** the original track stays visible as a faint line under the result, and the dialog lists each track's
-  result, for example "F2: 160 -> 14 breakpoints, max error 18 Hz".
+  result, for example "F2: smoothed 15 ms, 160 -> 14 breakpoints, max error 18 Hz" (the error is against the
+  original values).
 - **Apply** is one undo step; Cancel restores the original.
 
 ### 5.7 Files
@@ -331,15 +355,26 @@ void KlattDestroy(klatt_h h);
 - **Cross-architecture:** 32- and 64-bit output for the same input agree within 1 LSB.
 - **Voice source (DLL 1.1):** the LF source's harmonics against its formulas, its level across Rd, Rd's tilt on the
   1980 source, flutter, diplophonia, white noise and the AF/AH ramps (`tests/test_synth_source.c`).
-- **Editor logic** (`model.c`, `csvio.c`, `optimize.c`): CSV round trip (load, save, load gives identical data);
-  every rejection case; optimizer tolerance, grid alignment and endpoints; each edit operation and undo/redo.
+- **Speaking speed (DLL 1.2):** SPD = 1 is bit-identical to 1.1 (the golden recording and the 32/64-bit stretch are
+  unchanged); lengths at SPD 0.25-4 and `KlattMaxFrameSamples`; F0 and F1 of a steady vowel within 1 % at SPD 0.5,
+  1 and 2; an SPD 1.5 stretch in the 32/64-bit comparison (`tests/test_synth_speed.c`). Editor core:
+  `synth_frame_start` and `synth_sample_ms` at several SPD, the display synthesis ignoring the document's SPD.
+- **Editor logic** (`model.c`, `csvio.c`, `optimize.c`, `waverange.c`): CSV round trip (load, save, load gives
+  identical data); every rejection case; optimizer tolerance, grid alignment and endpoints; smoothing (a spike
+  removed by the median, a step kept, a Gaussian's FWHM measured on an impulse, amplitude onsets kept, w = 0 a
+  no-op); each edit operation and undo/redo, including `doc_crop` (contents, one undo step, refusal of empty and
+  whole ranges); the import range's pixel/sample mapping, snapping, clamping and envelope.
 
 - **WAV import:** the WAV reader, resampler, Burg LPC, root finder, pitch and formant tracking as units, and round
   trips of documents synthesized by the DLL through the import (`tests/test_wavimport.c`); see the import design's
   section 4.6.
 
-**Manual:** a GUI checklist in `docs/` covering painting, the line tool, selection, the frame table, playback,
-Globals, Optimize, save prompts and DPI scaling. Listening checks are done by the user; sounds the user approves
+**UI scripts:** `tools/ui/check_edit.ps1` crops a selection and undoes it; `tools/ui/check_import.ps1` drags a
+range on the import dialog's waveform and checks the document is as long as the range.
+
+**Manual:** a GUI checklist in `docs/` covering painting, the line tool, selection, crop, the frame table, playback
+(also at SPD 0.5 and 2), Globals, Optimize and its smoothing, the import's waveform range, save prompts and DPI
+scaling. Listening checks are done by the user; sounds the user approves
 are frozen as regression files.
 
 **Sample:** `samples/python/klatt.py` binds `klatt64.dll` with `ctypes` and synthesizes a vowel glide to a WAV

@@ -17,6 +17,8 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
       status bar shows the pointer's Rd with two decimals.
 - [ ] At the default window size the left panel shows a scrollbar; the wheel over the panel and the scrollbar
       reach the last global line (F6). Enlarging the window until everything fits hides the scrollbar.
+- [ ] The panel's globals include SPD, which follows Parameters > Globals; the strips and the spectrogram do not
+      change with SPD.
 
 ## Editing
 
@@ -26,6 +28,8 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
 - [ ] Dragging in the time ruler selects frames across all strips; a click without dragging moves the cursor.
 - [ ] Edit > Undo and Redo name the step ("Undo Paint F2") and restore exactly.
 - [ ] Cut, Copy, Paste, Delete frames and Insert frames... change the duration shown in the status bar.
+- [ ] Edit > Crop to selection (Ctrl+Shift+X) keeps only the selected frames, selects all of them and fits the view;
+      Undo ("Undo Crop") brings the rest back. The item is greyed with nothing selected or everything selected.
 - [ ] After Delete frames the table row matches the cursor.
 - [ ] View > Frame table: selecting a row moves the cursor; F2 or a double-click edits a cell; Enter commits and
       the plot follows; Escape cancels.
@@ -40,6 +44,9 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
 - [ ] Listening, voice source: with Globals SRC = 1, `ba.csv` still sounds like "ba" at about the same loudness;
       painting Rd from 0.5 to 2.5 moves the voice from pressed to breathy in both SRC = 0 and SRC = 1; FL = 50 adds
       a slow natural wobble; DI = 50 over the last 200 ms gives a rough, creaky ending.
+- [ ] Listening, speaking speed: with Globals SPD = 0.5, Space plays `ba.csv` twice as long at the same pitch and
+      vowel quality, and the playhead stays over the frames being heard; SPD = 2 plays it twice as fast; Export WAV
+      writes the sound at SPD (a file half or twice as long); Shift+Space plays the selection at SPD.
 - [ ] Once the listening checks are approved (and after any intended change to the synthesizer), run
       `make golden` and commit `tests/golden/` so later changes to the sound are caught by the tests.
 
@@ -55,7 +62,13 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
       step clears any redo history that existed before Preview was first pressed in this dialog session.)
 - [ ] Optimize > Preview > Cancel leaves the title without * and Redo disabled.
 - [ ] Parameters > Optimize... has Rd and DI (%) tolerances (0.05 and 2).
-- [ ] Help > Parameter reference lists all 23 frame parameters and 20 globals.
+- [ ] Parameters > Optimize...: the rows show each track's smoothing ("F1 · 10 ms", "F2 · 15 ms", "F3 · 20 ms",
+      "F4 · 25 ms", the others "· 0 ms"); selecting rows and typing in Smoothing (ms) changes all of them; the widths
+      are kept the next time the dialog opens; "abc" or 600 is refused with a message on Preview.
+- [ ] Optimize with smoothing on an imported F3/F4: Preview shows a smoother track than without (set the width to 0
+      to compare) and the summary says "smoothed 20 ms" with the error against the original.
+- [ ] Help > Parameter reference lists all 23 frame parameters and 21 globals (SPD last).
+- [ ] Parameters > Globals... and File > New... fit on a 1366x768 screen with all 21 rows.
 
 ## Files
 
@@ -70,20 +83,29 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
 - [ ] File > Import WAV... with unsaved changes asks to save first; Cancel there, or in the file dialog, or in the
       import dialog, leaves the document as it was.
 - [ ] The import dialog offers Adult male (default), Adult female and Child, a sample rate of 11025 with the note
-      about children's voices, and "Simplify with Optimize afterwards" unticked.
+      about children's voices, Analysis Fast / Normal (default) / Best, remembered for the session, and "Simplify
+      with Optimize afterwards" unticked.
+- [ ] The dialog shows the recording's waveform with all of it selected; dragging selects a range (Start and End
+      follow, in seconds with 3 decimals); typing Start and End moves the shaded range; a double-click selects all
+      of it again; Play plays the range at the recording's own rate; a range under 50 ms is refused with a message.
+- [ ] Importing a range gives a document as long as the range, titled after the WAV.
+- [ ] With Analysis Fast a minute-long recording imports noticeably faster than with Normal; Best takes longer.
 - [ ] A sample rate outside 5000-20000 Hz is refused with a message and the focus goes back to the field.
 - [ ] While it runs the pointer is the wait cursor and the status bar says "Analyzing…" (noticeable on a file of
       a minute or more).
 - [ ] The result opens as a new document titled `<wav name>.wav*`; Edit > Undo is disabled (import is not an undo
       step); File > Save asks for a name and suggests `<wav name>.csv`; closing asks to save.
-- [ ] Errors are shown in a message box and leave the current document untouched: a non-WAV file ("Not a WAV
-      file"), an unsupported format (for example an ADPCM or 64-bit float WAV, whose message names the format), a
+- [ ] Errors are shown in a message box before the import dialog (the WAV is read first) and leave the current
+      document untouched: a non-WAV file ("Not a WAV file"), an unsupported format (for example an ADPCM or 64-bit float WAV, whose message names the format), a
       sample rate above 1 MHz (the message names it), a recording longer than 10 minutes, and a silent or empty
       one ("No sound found").
 - [ ] Simplify with Optimize afterwards gives tracks with visibly fewer breakpoints.
-- [ ] Listening on the user's recordings in `C:\Users\abart\Desktop\fextr_sept2026\wavs` (adult male, 11025 Hz):
+- [ ] Listening on the user's recordings in `C:\Users\abart\Desktop\fwavs` (adult male, 11025 Hz):
       `AE`, `IH` and `OW` resynthesize as the same vowels at a similar pitch, without aspiration in their steady
       parts; `S` and `SH` as the two different hisses; `Z`, `ZH` and `V` as voiced fricatives (V is weak: its
       frication is quiet and missing in some frames). Every resynthesis peaks at about -1 dBFS without clipping,
       with no burst or click before an onset; a copy of a recording scaled 20 dB down imports with the same
       amplitudes and G0 (within a step).
+- [ ] The same recordings re-imported, checked for jumps: V, Z and ZH have no single-frame jumps in F2-F3 that stand
+      out on the spectrogram, V's F1 stays low (no stretch at the top of F1's range), and the vowels' AH, where it
+      appears, lasts at least 3 frames.

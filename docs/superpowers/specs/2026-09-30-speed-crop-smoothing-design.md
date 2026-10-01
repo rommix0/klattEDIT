@@ -4,7 +4,8 @@ Four additions requested after the user's listening check of the WAV import: a s
 and an analysis-quality choice for the import; cropping in the editor and in the import dialog; fewer single-frame
 jumps in imported tracks; and adjustable per-track smoothing in Optimize.
 
-Date: 2026-09-30. Status: approved in brainstorming, pending written-spec review.
+Date: 2026-09-30. Status: approved; the plan-6 prototype's choices and measurements are recorded below (marked
+"Prototype").
 Base design: `2026-09-28-kpe-open-design.md` ("the base spec"); WAV import design:
 `2026-09-29-voice-source-and-wav-import-design.md` ("the import spec"). Section 7 lists the sections of both that
 this design amends.
@@ -75,6 +76,14 @@ limits.
 
 `import_options` gains `int quality` (`IMPORT_FAST`, `IMPORT_NORMAL`, `IMPORT_BEST`).
 
+Prototype: Fast keeps the numbers above. On the 32-bit build a 60 s high voice (the round trip's female vowels
+repeated) imports in 4.0 s with Fast (6.9 s with Normal, 10.8 s with Best), a 60 s male voice in 3.6 s (Normal 4.3 s,
+Best 7.1 s). Best meets every 4.6 limit on the corpus at 11025 Hz once Rd is fitted only on frames whose window lies
+in the vowel (three voiced frames on either side; fitting every 4th frame otherwise reached a /z/'s frication and
+took its fricative bands' 90th percentile from 2.6 to 4.0 dB). Fast misses one: the female vowels' F1 90th
+percentile is 10.8 % (limit 10 %), listed in the import spec's known limits. `IMPORT_NORMAL` is 0, so a zeroed
+`import_options` analyses as before.
+
 ## 4. Cropping
 
 ### 4.1 Edit > Crop to selection
@@ -84,6 +93,10 @@ limits.
 - Disabled when nothing is selected or the whole document is selected.
 - `doc_crop(kpe_doc *d, int first, int count)` in `kpe/model.c`, built on the existing frame deletion inside one
   `doc_begin`/`doc_end` group.
+
+Prototype: the model's transactions group value edits only (frame deletion is refused inside one), so `doc_crop` is
+a single splice of the whole document down to the kept frames, the mechanism frame deletion itself uses: one undo
+step, "Crop".
 
 ### 4.2 Range selection when importing
 
@@ -103,16 +116,20 @@ limits.
 ### 5.1 Measured now
 
 On the user's recordings (adult male, 11025 Hz), counting frames inside a run of one class whose value differs
-from the mean of its two neighbours by more than 8 % (formants) or 6 dB (amplitudes):
+from the mean of its two neighbours by more than max(8 %, 30 Hz) (formants) or 6 dB (amplitudes):
 
 | Recording | F1 | F2 | F3 | F4 | AV | AF | AH |
 |---|---|---|---|---|---|---|---|
-| V (89 voiced-fricative frames) | 13 | 15 | 12 | 0 | 9 | 13 | 0 |
-| Z (156) | 8 | 0 | 11 | 0 | 0 | 1 | 0 |
+| V (89 voiced-fricative frames) | 12 | 15 | 12 | 0 | 9 | 13 | 0 |
+| Z (156) | 0 | 0 | 11 | 0 | 0 | 1 | 0 |
 | ZH (164) | 9 | 11 | 10 | 8 | 10 | 15 | 0 |
 | AE / IH / OW (voiced, 59-86) | 3-7 | 0-2 | 0-1 | 0-2 | 0-2 | - | 4-7 |
 
 The vowels' AH spikes are single frames where the aperiodicity crosses the 0.25 threshold and AH switches on.
+
+Definition note: the 30 Hz floor was added after the first prototype round. With 8 % alone a low F1's (150-200 Hz)
+jitter of 15-30 Hz counted as spikes (the /z/'s F1 had 8, the /v/'s 13); the floor keeps a formant spike something
+the ear and the eye would call one.
 
 ### 5.2 Formant candidates weighted by reliability
 
@@ -129,6 +146,23 @@ The vowels' AH spikes are single frames where the aperiodicity crosses the 0.25 
 - The constants (the r mapping, the threshold, the low-pass, the confirmation distance and bonus) are named,
   tuned on the round-trip corpus and the user's recordings, and carry their measured ranges in comments.
 
+Prototype values and changes:
+
+- r = 0.1 + 0.9 × min(f(hf), f(top)), f falling linearly from 1 to 0 between an energy fraction of 0.1 and 0.3, and
+  between a top-band flatness of -20 and -5 dB; the top band counts from 11025 Hz up only (below it the band holds
+  formants). r's floor of 0.1 keeps the reference distance ranking candidates a little (at 0.05 the /aza/ with 6 dB
+  stronger frication kept F2/F3 90th-percentile errors of 57/45 % in its fricative; 12/10 % at 0.1).
+- Decision (accepted by the user): YIN's aperiodicity is not part of r. It left the user's recordings as they
+  were (their voiced fricatives are periodic) and, through a few onset frames weighted down, moved the female vowels
+  at 8000 Hz past their known limits.
+- Threshold 0.7 (`TRACK_UNRELIABLE`), low-pass 3000 Hz / 0.3·SR (a resampling to 6667 Hz at 11025 Hz, LPC order 10),
+  confirmation within 10 %, bonus 0.5 (without it or without the second analysis the /aza/'s F2/F3 kept 57/45 %).
+- Decision (accepted by the user; an addition to the design above): a frame below the threshold may leave one track
+  empty although it has candidates for all four (the empty-track cost unchanged). The user's /v/ loses the voice bar
+  in the full-band analysis for a few frames; every state there gave F1 the next formant (above 1380 Hz, clamped to
+  1300), and the weighting alone then kept F1 there for the whole /v/. With the empty choice the /v/ has F1 above
+  1 kHz in 6 of its 91 frames (64 without it, 26 before this design; 3 with the smoothing of 5.3).
+
 ### 5.3 Spike filter
 
 - A Hampel filter runs within each run of frames of one class: a frame whose value differs from the median of the
@@ -139,17 +173,52 @@ The vowels' AH spikes are single frames where the aperiodicity crosses the 0.25 
 - It runs twice: on F1-F4 and B1-B3 right after tracking and the formant correction (so Rd and the calibration see
   the filtered formants), and on AV, AF, AH and A2-A6 after the last calibration pass, before the verification
   synthesis (import spec 4.3 step 8) and the G0 normalization, so the burst and peak guarantees still hold.
+- **Formant smoothing** (added after the first prototype round): after the filter's formant pass, F1-F4 are
+  smoothed with Optimize's smoother (`opt_smooth`, 6) at its default widths (F1 10, F2 15, F3 20, F4 25 ms) within
+  each run of frames of one class, never across a class boundary, before Rd and the calibration. The band levels are
+  measured again where the formants changed.
 - **Aspiration in voiced frames** gets hysteresis: AH switches on when the smoothed aperiodicity rises above 0.25
   and off only when it falls below 0.20, and an on-run shorter than 3 frames is turned off. The prototype may move
   the off threshold and records the value here.
 
+Prototype: the off threshold stays 0.20 (0.10-0.25 all left the user's vowels with 14-18 AH spikes, all at the edges
+of on-runs of 3 frames or more). A run's first and last frame are not filtered: their window reaches one side only,
+and a decay's first frame looked like a spike (a /s/'s vowel offset rose 7 dB and the resynthesis's level error after
+it from 5-10 to 11-16 dB). The filter moved five 8000/16000 Hz round-trip measures past their earlier limits by
+0.1-1.1 points; variants that filtered the frication as band levels, left A2-A6 or F4 out, or filtered the raw
+tracks each fixed some and broke others, including Best at 11025 Hz.
+
+Prototype, smoothing: the default widths, after the filter's formant pass. Wider widths (1.5 and 2 times the
+defaults) and other placements (before the filter, or on the tracks before the formant correction) each broke an
+11025 Hz limit (the /aʃa/'s fricative bands, Best's weak /aza/, Fast's loudest frame in `ba`). With the smoothing
+three of the filter's five 8000/16000 Hz measures meet the import spec's limits again; two stay past them (the
+female vowels' F3 median at 8000 Hz, now 24.7 %, the /ava/'s fricative bands at 8000 Hz, now 7.4 dB) and one more
+moved just past its limit (the child vowels' Rd median at 16000 Hz, 0.30 against 0.3). Decision
+(accepted by the user): these 8000/16000 Hz values are known limits, listed with their causes in the import spec's
+4.6; every 11025 Hz limit holds.
+
 ### 5.4 Targets
 
-- On the user's recordings: no frame inside a class run differs from the mean of its neighbours by more than 8 %
-  (F1-F4) or 6 dB (AV, AF, AH), except where a run is shorter than three frames; AH is not switched on for fewer
-  than 3 frames inside a voiced run.
+- On the user's recordings: no frame inside a class run differs from the mean of its neighbours by more than
+  max(8 %, 30 Hz) (F1-F4) or 6 dB (AV, AF, AH), except where a run is shorter than three frames; AH is not switched
+  on for fewer than 3 frames inside a voiced run.
 - The import spec's 4.6 round-trip limits still hold at every rate and level tested there.
 - The speed test (Normal, male) stays within 5 s on 32-bit.
+
+Prototype results: the round-trip limits hold at 11025 Hz for every preset (Fast with its one known limit, 3.3); at
+8000 and 16000 Hz three measures are past their earlier limits (5.3). The speed test takes 4.3 s on 32-bit (2.9 s on
+64-bit). Over the eight recordings the formant spikes went from 52, 37, 40 and 12 (F1-F4) before this design to 43,
+10, 13 and 15 with the reliability weighting and the filter, and to 30, 0, 0 and 0 with the smoothing; AV's from 21
+to 3 to 0, AF's from 31 to 20 to 22, AH's from 20 to 16 to 9 (import spec 4.6 has the table). Of the 30 remaining F1
+spikes 25 are the /v/'s (3 the /s/'s, 1 each in /æ/'s voicing and /ʃ/'s aspiration): the /v/'s F1 rises to 600-1270
+Hz in three stretches of 4-8 frames where the full-band analysis lost the voice bar, and the smoothing turns each
+into a bump whose shoulders count. The AF spikes are the /v/'s (9, in those same frames: with F1 that high the
+voicing fills the bands the frication would), the /ʒ/'s (5, single frames where the recording's frication measures
+7-9 dB weaker in every band at once, which the five-frame filter keeps because the frication's own frame-to-frame
+spread sets its limit at 9-18 dB), and 2-3 each in /z/, /s/ and /ʃ/. Neither has a small fix: the first needs a
+better F1 in the /v/, the second smoothing of the amplitudes. The vowels' AH spikes are the edges of on-runs of 3
+frames or more. The synthetic /aza/ and /ava/ with 6 dB stronger frication have no formant spike (F1-F3 within 25 %,
+90th percentile).
 
 ## 6. Smoothing in Optimize
 
@@ -167,6 +236,11 @@ The vowels' AH spikes are single frames where the aperiodicity crosses the 0.25 
   the original values) and the single undo step work as before.
 - The import's "Simplify with Optimize afterwards" uses the same defaults (smoothing, then simplification).
 
+Prototype: the field accepts 0-500 ms; a width of 0 shows as "· 0 ms"; the list allows several tracks to be selected,
+the field shows the first one's width and a typed width applies to all of them; the Gaussian is truncated at
+floor(3σ) frames, the median keeps a run's two end frames, and the Gaussian is summed as differences from the frame's
+own value so a constant track stays exactly constant.
+
 ## 7. Changes to the earlier specs
 
 Applied by the implementing plan:
@@ -174,8 +248,9 @@ Applied by the implementing plan:
 - Base spec: 4.2 (the SPD row, global count 21), 4.3 (frame timing with SPD), 4.4 (version 1.2.0, counts 23 and
   21), 5.2 (Crop to selection), 5.3 (Play and Export use SPD; display at SPD 1), 5.5 (the import dialog's range and
   preset), 5.6 (smoothing), 8 (the new tests).
-- Import spec: 4.3 (reliability-weighted tracking, the second analysis, the spike filter), 4.5 (the dialog), 4.6
-  (the new tests; the user's recordings now live in `C:\Users\abart\Desktop\fwavs`), 4.7 (the presets' speeds).
+- Import spec: 4.3 (reliability-weighted tracking, the second analysis, the spike filter, the formant smoothing),
+  4.5 (the dialog), 4.6 (the new tests; the user's recordings now live in `C:\Users\abart\Desktop\fwavs`), 4.7 (the
+  presets' speeds).
 - `docs/klatt-dll.md`: SPD and the frame-timing formula; `docs/manual-checklist.md`: the new items; README.
 
 ## 8. Tests
