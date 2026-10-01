@@ -22,19 +22,19 @@
 #define LIM_AV_DB 3.0
 #define LIM_RD 0.3
 #define LIM_BAND_DB 3.0
-#define HIGH_VOICE_F0 200.0    /* from this median F0 up, AV and Rd are held to their limits at the median: 25 ms LPC
-                                * cannot resolve B1 there, and Rd and AV absorb the bandwidth error */
+#define HIGH_VOICE_F0 200.0    /* from this median F0 up, AV, Rd and the frame levels are held to their limits at the
+                                * median: 25 ms LPC cannot resolve B1 there, and Rd and AV absorb the bandwidth error */
 #define LIM_CLASS 0.90         /* every class with at least MIN_CLASS_FRAMES steady frames: this share right */
 #define MIN_CLASS_FRAMES 10
 #define LIM_FRIC_AF 0.90       /* steady fricative frames imported with AF > 0: at least this share */
-#define QUIET_DB -48.0         /* the quiet /asa/ is this much below the synthesis: peak about -50 dBFS, where the
-                                * strongest AF + An total is below PAR_TOP (at -40 dB the unfixed import still found
-                                * AF in 34 of 35 steady fricative frames) */
-#define LIM_VUV_QUIET 0.94     /* V/UV for a scaled WAV: frame 146's aperiodicity (0.448 against the 0.45 hold) is
-                                * level-sensitive, so one borderline frame flips as soon as the WAV is scaled */
+#define QUIET_DB -48.0         /* the quiet /asa/ is this much below the synthesis: peak about -50 dBFS */
 #define LIM_AH_DB 5.0          /* a breathy vowel's AH, median over its steady frames */
-#define PEAK_MAX_DB -0.5       /* the resynthesis of a full-scale WAV peaks in this range (dBFS) */
+#define PEAK_MAX_DB -1.0       /* every resynthesis peaks at or below this; a full-scale WAV's at or above PEAK_MIN_DB */
 #define PEAK_MIN_DB -3.0
+#define INPUT_PEAK_DB -1.0     /* the import scales its input to peak here (spec 4.3) */
+#define LEVEL_RANGE_DB 40.0    /* per-frame levels are compared on frames within this of the WAV's loudest */
+#define LIM_LEVEL_DB 3.0       /* the resynthesis's frame level within this of the WAV's (90th percentile)... */
+#define LIM_LOUDER_DB 10.0     /* ...and no frame more than this louder (a burst) */
 #define BOUNDARY_FRAMES 2      /* compared frames are at least 10 ms from a class boundary */
 #define BAND_RANGE_DB 30.0     /* fricative bands more than this below the frame's strongest band are not compared */
 
@@ -199,21 +199,29 @@ static double *pcm_to_double(const synth_result *s)
 }
 
 /* Synthesizes src, imports it and compares with the spec 4.6 limits. AV and Rd are compared only when src uses the
- * LF source like the import (with the 1980 source neither means the same). The import sets its own G0 (level
- * normalization) and leaves the amplitudes as calibrated at the default G0, so the band levels of its synthesis are
- * compared less the G0 difference, and AV directly. "Within" is the 90th percentile of the per-frame error, or the
- * median for a voice whose median F0 is HIGH_VOICE_F0 or more. Also: every well-represented class right in at least
- * LIM_CLASS of its steady frames, no steady vowel frame imported with frication, at least LIM_FRIC_AF of the steady
- * fricative frames with AF > 0, no overload in the resynthesis. The WAV is scaled by gain_db first (the import does
- * not normalize its input, so the amplitudes follow: AV is compared with the source's plus gain_db). */
+ * LF source like the import (with the 1980 source neither means the same). The import scales its input to peak at
+ * INPUT_PEAK_DB, calibrates the amplitudes at the default G0 and then sets its own G0 (level normalization), so its
+ * synthesis's levels are compared with the WAV's plus the input scaling and the G0 difference, and AV with the
+ * source's plus the input scaling and the test's gain_db (the WAV is scaled by gain_db first), rounded to AV's step.
+ * "Within" is the 90th percentile of the per-frame error, or the median for a voice whose median F0 is
+ * HIGH_VOICE_F0 or more. Also: every well-represented class right in at least LIM_CLASS of its steady frames, no
+ * steady vowel frame imported with frication, at least LIM_FRIC_AF of the steady fricative frames with AF > 0, no
+ * overload in the resynthesis, its peak at or below PEAK_MAX_DB, and its frame levels (frames within LEVEL_RANGE_DB
+ * of the WAV's loudest) within LIM_LEVEL_DB of the WAV's and never more than LIM_LOUDER_DB louder than the WAV's
+ * loudest over the frame and the glottal period before it (a burst; a decay lags by up to a period, as the DLL
+ * latches AV at each pulse). */
 static void round_trip_gain(const char *name, const kpe_doc *src, int voice, double gain_db)
 {
 	int same_source = src->globals[KG_SRC] == 1;
 	synth_result s;
 	CHECK(synth_doc(src, &s) == 0);
-	double *x = pcm_to_double(&s);
-	for (int i = 0; i < s.n; i++)
+	double *x = pcm_to_double(&s), xpeak = 0, gdef[NG];
+	for (int i = 0; i < s.n; i++) {
 		x[i] *= pow(10, gain_db / 20);
+		xpeak = fabs(x[i]) > xpeak ? fabs(x[i]) : xpeak;
+	}
+	t_default_globals(gdef);
+	double in_db = INPUT_PEAK_DB - 20 * log10(xpeak); /* the import's input scaling */
 	import_options o = { voice, s.sr, 0 };
 	kpe_doc d;
 	import_info info;
@@ -231,8 +239,10 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 	int nf = d.nframes < src->nframes ? d.nframes : src->nframes;
 	double *e0 = malloc(sizeof(double) * nf), *ef[3], *eav = malloc(sizeof(double) * nf);
 	double *erd = malloc(sizeof(double) * nf), *eband = malloc(sizeof(double) * nf * 5);
-	double *tf0 = malloc(sizeof(double) * nf), dg0 = d.globals[KG_G0] - src->globals[KG_G0];
-	int ntf0 = 0, vowel_fric = 0, fric_n = 0, fric_af = 0;
+	double *tf0 = malloc(sizeof(double) * nf), *elev = malloc(sizeof(double) * nf);
+	double lvl_off = in_db + d.globals[KG_G0] - gdef[KG_G0]; /* resynthesis level less the WAV's, expected */
+	double av_off = gain_db + in_db + src->globals[KG_G0] - gdef[KG_G0]; /* imported AV less the source's */
+	int ntf0 = 0, vowel_fric = 0, fric_n = 0, fric_af = 0, nlev = 0;
 	for (int i = 0; i < 3; i++)
 		ef[i] = malloc(sizeof(double) * nf);
 	int n0 = 0, nfm = 0, nav = 0, nrd = 0, nband = 0, vuv_ok = 0, vuv_n = 0;
@@ -241,7 +251,32 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 	synth_result sy;
 	CHECK(synth_doc(&d, &sy) == 0);
 	CHECK(sy.overload == 0);
-	double *y = pcm_to_double(&sy);
+	double *y = pcm_to_double(&sy), ypeak = 20 * log10(m_peak(sy.pcm, sy.n) / 32768 + 1e-12);
+	CHECK(ypeak <= PEAK_MAX_DB);
+	/* per-frame levels: the resynthesis against the WAV */
+	double loud = -1e300, louder = -1e300;
+	import_levels *lwk = malloc(sizeof(import_levels) * nf);
+	for (int k = 0; k < nf; k++) {
+		const double *b = d.frames + (size_t)k * NP;
+		double f[6] = { b[KP_F1], b[KP_F2], b[KP_F3], b[KP_F4], d.globals[KG_F5], d.globals[KG_F6] };
+		import_measure(x, s.n, s.sr, import_frame_centre(s.sr, 5, k), f, &lwk[k]);
+		loud = lwk[k].total > loud ? lwk[k].total : loud;
+	}
+	for (int k = 0; k < nf; k++) {
+		if (lwk[k].total < loud - LEVEL_RANGE_DB)
+			continue;
+		const double *b = d.frames + (size_t)k * NP;
+		double f[6] = { b[KP_F1], b[KP_F2], b[KP_F3], b[KP_F4], d.globals[KG_F5], d.globals[KG_F6] };
+		import_levels ls;
+		import_measure(y, sy.n, sy.sr, import_frame_centre(s.sr, 5, k), f, &ls);
+		double e = ls.total - lwk[k].total - lvl_off, ref = lwk[k].total;
+		elev[nlev++] = fabs(e);
+		for (int j = k - import_period_frames(b[KP_F0]); j < k; j++) /* a decay may lag by a glottal period */
+			ref = j >= 0 && lwk[j].total > ref ? lwk[j].total : ref;
+		e = ls.total - ref - lvl_off;
+		louder = e > louder ? e : louder;
+	}
+	free(lwk);
 	int class_ok[CLS_COUNT] = { 0 }, class_n[CLS_COUNT] = { 0 };
 	for (int k = 0; k < nf; k++) {
 		if (!steady(src, k))
@@ -261,7 +296,7 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 			tf0[ntf0++] = a[KP_F0];
 			vowel_fric += b[KP_AF] > 0;
 			if (same_source && b[KP_AV] > 0) /* an unvoiced frame counts as a voicing error, not a level error */
-				eav[nav++] = fabs(b[KP_AV] - (a[KP_AV] + gain_db)); /* amplitudes follow the WAV's level */
+				eav[nav++] = fabs(b[KP_AV] - round(a[KP_AV] + av_off)); /* on AV's 1 dB grid, as imported */
 			if (same_source)
 				erd[nrd++] = fabs(b[KP_RD] - a[KP_RD]);
 		}
@@ -279,7 +314,7 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 					top = lw.band[i];
 			for (int i = 0; i < 5; i++)
 				if (lw.band[i] > top - BAND_RANGE_DB)
-					eband[nband++] = fabs(lw.band[i] - (ls.band[i] - dg0));
+					eband[nband++] = fabs(ls.band[i] - lw.band[i] - lvl_off);
 		}
 	}
 	double f0m = quantile(e0, n0, 0.5), vuv = vuv_n ? (double)vuv_ok / vuv_n : 0;
@@ -292,8 +327,10 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 	double avm = quantile(eav, nav, 0.5), avp = quantile(eav, nav, 0.9), avx = quantile(eav, nav, 1.0);
 	double rdm = quantile(erd, nrd, 0.5), rdp = quantile(erd, nrd, 0.9), rdx = quantile(erd, nrd, 1.0);
 	double bm = quantile(eband, nband, 0.5), bp = quantile(eband, nband, 0.9), bx = quantile(eband, nband, 1.0);
+	double lm = quantile(elev, nlev, 0.5), lp = quantile(elev, nlev, 0.9);
 	printf("  %s (%d frames, %d steady voiced, Rd fitted in %d%s; G0 %g):\n", name, nf, nfm, info.rd_frames,
 		high ? ", a high voice: AV and Rd at the median" : "", d.globals[KG_G0]);
+	printf("    frame levels |error| median %.1f, 90th %.1f dB, most louder %.1f dB (n %d)\n", lm, lp, louder, nlev);
 	printf("    F0 median %.2f %% (n %d); V/UV %.1f %% correct (n %d)\n", 100 * f0m, n0, 100 * vuv, vuv_n);
 	printf("    F1/F2/F3 median %.1f/%.1f/%.1f %%, 90th %.1f/%.1f/%.1f %%\n", 100 * fm[0], 100 * fm[1],
 		100 * fm[2], 100 * fp[0], 100 * fp[1], 100 * fp[2]);
@@ -309,10 +346,11 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 			printf(" %s %d/%d", (const char *[]){ "silence", "voiced", "voiced fric", "fric", "aspiration" }[c],
 				class_ok[c], class_n[c]);
 	printf("; steady vowel frames with frication %d; steady fricative frames with AF %d/%d; resynthesis peak "
-		"%.1f dBFS\n", vowel_fric, fric_af, fric_n,
-		20 * log10(m_peak(sy.pcm, sy.n) / 32768 + 1e-12));
+		"%.1f dBFS\n", vowel_fric, fric_af, fric_n, ypeak);
 	CHECK(n0 > 0 && f0m < LIM_F0_MEDIAN);
-	CHECK(vuv >= (gain_db == 0 ? LIM_VUV : LIM_VUV_QUIET));
+	CHECK(vuv >= LIM_VUV);
+	CHECK(nlev > 0 && (high ? lm : lp) <= LIM_LEVEL_DB);
+	CHECK(louder <= LIM_LOUDER_DB);
 	for (int i = 0; i < 3; i++) {
 		CHECK(nfm > 0 && fm[i] < LIM_F_MEDIAN);
 		CHECK(fp[i] < LIM_F_P90);
@@ -332,6 +370,7 @@ static void round_trip_gain(const char *name, const kpe_doc *src, int voice, dou
 		CHECK(bp <= LIM_BAND_DB);
 	free(e0);
 	free(tf0);
+	free(elev);
 	free(eav);
 	free(erd);
 	free(eband);
@@ -358,6 +397,9 @@ static void test_round_trips(void)
 	CHECK(rc == 0);
 	if (rc == 0) {
 		round_trip("ba.csv (1980 source)", &d, VOICE_MALE);
+		round_trip_gain("ba.csv 10 dB quieter", &d, VOICE_MALE, -10);
+		round_trip_gain("ba.csv 20 dB quieter", &d, VOICE_MALE, -20);
+		round_trip_gain("ba.csv 30 dB quieter", &d, VOICE_MALE, -30);
 		doc_free(&d);
 	}
 	female_vowels(&d);
@@ -365,6 +407,9 @@ static void test_round_trips(void)
 	doc_free(&d);
 	fricative(&d, 0);
 	round_trip("/asa/", &d, VOICE_MALE);
+	round_trip_gain("/asa/ 10 dB quieter", &d, VOICE_MALE, -10);
+	round_trip_gain("/asa/ 20 dB quieter", &d, VOICE_MALE, -20);
+	round_trip_gain("/asa/ 30 dB quieter", &d, VOICE_MALE, -30);
 	round_trip_gain("/asa/ 48 dB quieter", &d, VOICE_MALE, QUIET_DB);
 	doc_free(&d);
 	fricative(&d, 50);

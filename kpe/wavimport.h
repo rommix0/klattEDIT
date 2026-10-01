@@ -53,6 +53,10 @@ void import_measure(const double *x, long n, int sr, long centre, const double *
 /* The sample frame k's analysis window is centred on: the middle of the samples the synthesizer renders for it. */
 long import_frame_centre(int sr, double frame_ms, int k);
 
+/* The import's frames (5 ms) a glottal period at f0 spans, rounded up (0 for f0 <= 0): the DLL latches AV at each
+ * pulse, so a frame's voicing sounds on for that long. */
+int import_period_frames(double f0);
+
 /* Analyses x (n samples at sr_in Hz, in [-1, 1)) into *d, a new document (not dirty). info may be NULL; otherwise
  * it receives the per-frame analysis (free it with import_info_free). Returns 0, or -1 with msg set (UTF-8) and
  * *d untouched: too long (over DOC_MAX_DURATION_MS), no sound (peak below -60 dBFS), bad arguments, out of memory. */

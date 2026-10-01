@@ -52,13 +52,21 @@
                                * 0.25 none in AE and OW and 3 of 49 in IH's noisy patch); aspiration 5 dB below AV
                                * reads 0.2-0.4, 10 dB below 0.09-0.13 (and stays off) */
 #define AP_SMOOTH 5           /* frames in the aperiodicity's median */
-#define NORM_HEADROOM_DB 24.0 /* the normalization's synthesis runs this far below the default G0, clear of clipping */
+#define INPUT_PEAK_DB -1.0    /* the input is scaled to peak here (dBFS) before the analysis */
+#define NORM_HEADROOM_DB 24.0 /* a normalization synthesis that overloads is followed by one this far lower */
 #define NORM_PEAK_DB -1.0     /* the resynthesis peaks at most here (dBFS) after normalization */
 
 #define REF_LEVEL 60.0        /* the amplitude the reference syntheses use for the start values */
 #define CAL_PASSES 2          /* level corrections after the first pass (which synthesizes voicing and aspiration
                                * and fits the frication): three syntheses in all, as spec 4.3 step 8 has it. A
                                * third correction pass moved the fricative bands' 90th percentile by 0.1 dB */
+#define CAL_HEADROOM_DB 12.0  /* the calibration's syntheses run this far below the default G0 (and are measured as at
+                               * the default), so that a recording scaled to INPUT_PEAK_DB does not clip them */
+#define CAL_MAX_STEP_DB 12.0  /* a calibration pass moves AV or AH by at most this: where the cascade's gain is very
+                               * high (F1 and F2 close and broad) the 25 ms window's leakage between frames makes a
+                               * full correction overshoot */
+#define CAL_LOUD_DB 6.0       /* after the last pass a verification synthesis lowers every non-silent frame more
+                               * than this louder than the WAV by the excess */
 #define FRIC_WEAK_WEIGHT 0.1  /* weight of a band more than BAND_RANGE_DB below the strongest in the frication fit */
 #define FRIC_SWEEPS 6         /* coordinate sweeps of the frication fit */
 #define FRIC_STEP_DB 12.0     /* its pattern search: first step... */
@@ -69,11 +77,13 @@
                                * refitted), clear of the 80 dB limit so a correction never clamps */
 #define BAND_RANGE_DB 30.0    /* fricative bands more than this below the frame's strongest weigh less in the fit */
 
-#define FCORR_PASSES 2        /* formant correction passes (F1-F3 by analysis-by-synthesis) */
-#define FCORR_MIN_F0 150.0    /* ...for a voice whose median F0 is this or higher, where LPC's bias matters: it took
-                               * the female vowels' F1 from 5.5 % median / 13.8 % 90th-percentile error to 3.2 /
-                               * 9.2 %; a male voice gains less (F1 median 1.9 -> 0.9 %) than the passes cost (0.6 s
-                               * per 60 s) */
+#define FCORR_PASSES 3        /* formant correction passes (F1-F3 by analysis-by-synthesis): with the voicing
+                               * synthesized below clipping (CAL_HEADROOM_DB) two left the female vowels' F1 at
+                               * 10.3 % 90th-percentile error, three 9.4 % */
+#define FCORR_MIN_F0 150.0    /* ...for a voice whose median F0 is this or higher, where LPC's bias matters: two passes
+                               * took the female vowels' F1 from 5.5 % median / 13.8 % 90th-percentile error to 3.2 /
+                               * 9.2 %; a male voice gains less (F1 median 1.9 -> 0.9 %) than the passes cost (about
+                               * 0.6 s each per 60 s) */
 #define FCORR_SEARCH 0.25     /* the synthesis's candidate must lie within this fraction of the current value */
 #define FCORR_MAX_STEP 0.2    /* and a pass moves a formant by at most this fraction */
 
@@ -129,6 +139,11 @@ static int fail(char *msg, size_t msglen, const char *fmt, ...)
 long import_frame_centre(int sr, double frame_ms, int k)
 {
 	return (long)floor((k + 0.5) * sr * frame_ms / 1000 + 1e-9);
+}
+
+int import_period_frames(double f0)
+{
+	return f0 > 0 ? (int)ceil(1000 / (f0 * IMPORT_FRAME_MS) - 1e-9) : 0;
 }
 
 static double param_min(int p)
@@ -613,8 +628,19 @@ static int reference_levels(const double *g, const double *fr, spec_ctx *spec, i
 	return rc;
 }
 
-/* Measures every frame of the synthesis of d into lv. */
-static int measure_synth(const kpe_doc *d, spec_ctx *spec, import_levels *lv)
+/* The peak of synthesis s in dBFS (-1e300 when it is silent). */
+static double peak_db(const synth_result *s)
+{
+	int peak = 0;
+	for (int i = 0; i < s->n; i++)
+		if (abs(s->pcm[i]) > peak)
+			peak = abs(s->pcm[i]);
+	return peak > 0 ? 20 * log10(peak / 32768.0) : -1e300;
+}
+
+/* Measures every frame of the synthesis of d, its samples scaled by gain, into lv; the synthesis's peak (dBFS) and
+ * overload count go to *pdb and *over. */
+static int measure_synth(const kpe_doc *d, spec_ctx *spec, double gain, import_levels *lv, double *pdb, int *over)
 {
 	synth_result s;
 	if (synth_doc(d, &s) != 0)
@@ -624,8 +650,10 @@ static int measure_synth(const kpe_doc *d, spec_ctx *spec, import_levels *lv)
 		synth_result_free(&s);
 		return -1;
 	}
+	*pdb = peak_db(&s);
+	*over = s.overload;
 	for (int i = 0; i < s.n; i++)
-		x[i] = s.pcm[i] / 32768.0;
+		x[i] = s.pcm[i] * gain / 32768.0;
 	for (int k = 0; k < d->nframes; k++) {
 		double f[6];
 		formants_of(d->frames + (size_t)k * NP, d->globals, f);
@@ -646,6 +674,18 @@ static double voiced_ah(double av, double ap)
 		return 0;
 	ap = ap > 1 - 1e-4 ? 1 - 1e-4 : ap;
 	return settle(KP_AH, av + 10 * log10(ap / (1 - ap)));
+}
+
+/* Amplitude p after a calibration pass: v moved by diff (the WAV's level less the synthesis's, dB), at most
+ * CAL_MAX_STEP_DB. An amplitude that was off (0) in the synthesis measured only its neighbours' leakage, so no
+ * correction applies: it stays off if that leakage reaches the WAV's level, else it restarts from its start value
+ * less the share of the WAV's power the leakage already supplies. */
+static double cal_step(int p, double v, double start, double diff)
+{
+	if (v <= 0)
+		return diff > 0 ? settle(p, start + 10 * log10(1 - pow(10, -diff / 10))) : 0;
+	diff = diff > CAL_MAX_STEP_DB ? CAL_MAX_STEP_DB : diff < -CAL_MAX_STEP_DB ? -CAL_MAX_STEP_DB : diff;
+	return settle(p, v + diff);
 }
 
 /* ---- the frication model: the parallel resonators A2-A6 as the DLL sums them ---- */
@@ -783,12 +823,25 @@ static void fric_get(const double *v, double *x)
 		x[j] = v[KP_AF] > 0 && v[KP_A2 + j] > 0 ? pow(10, (v[KP_AF] + v[KP_A2 + j] - 2 * REF_LEVEL) / 20) : 0;
 }
 
+/* Lowers every amplitude of frame v by db: AV, AH, and the frication through its gains, so that it stays on. */
+static void lower_frame(double *v, double db)
+{
+	double x[5];
+	fric_get(v, x);
+	for (int j = 0; j < 5; j++)
+		x[j] *= pow(10, -db / 20);
+	fric_set(v, x);
+	v[KP_AV] = settle(KP_AV, v[KP_AV] - db);
+	v[KP_AH] = settle(KP_AH, v[KP_AH] - db);
+}
+
 /* ---- formant correction by analysis-by-synthesis ---- */
 
 /* LPC's formant estimates are biased, most at high F0, where a formant between two harmonics is pulled towards
  * one (a female /u/'s F1 of 370 Hz at F0 215 Hz read 420). The synthesizer's output analysed the same way has the
  * same bias, so each pass synthesizes the voicing of the document, measures F1-F3 exactly as on the WAV (the
- * candidate nearest the current value), and moves each formant by the WAV's measurement less the synthesis's. */
+ * candidate nearest the current value), and moves each formant by the WAV's measurement less the synthesis's.
+ * Returns 1 when it corrected the formants, 0 for a lower voice (nothing done), -1 when out of memory. */
 static int correct_formants(const double *g, double *frames, int nframes, const unsigned char *cls,
 	const double *ftr, spec_ctx *spec)
 {
@@ -858,7 +911,7 @@ static int correct_formants(const double *g, double *frames, int nframes, const 
 	free(fr);
 	free(w);
 	free(x);
-	return 0;
+	return 1;
 }
 
 /* ---- the pipeline ---- */
@@ -888,6 +941,9 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	if (resample(x0, n0, sr_in, sr, &x) != 0)
 		return fail(msg, msglen, "Out of memory.");
 	long n = resample_length(n0, sr_in, sr);
+	double in_gain = pow(10, INPUT_PEAK_DB / 20) / peak; /* the amplitudes do not depend on the recording's level */
+	for (long i = 0; i < n; i++)
+		x[i] *= in_gain;
 	double spf = sr * IMPORT_FRAME_MS / 1000;
 	int nframes = (int)ceil(n / spf - 1e-9);
 	if (nframes < 1)
@@ -914,12 +970,13 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 	double *frames = malloc(sizeof(double) * NP * nframes), *w = NULL, *level = malloc(sizeof(double) * nframes);
 	double *hf = malloc(sizeof(double) * nframes), *upper = malloc(sizeof(double) * nframes);
 	double *lowrel = malloc(sizeof(double) * nframes), *aps = malloc(sizeof(double) * nframes);
+	double *start = malloc(sizeof(double) * nframes); /* AV's (voiced classes) or AH's (aspiration) start value */
 	unsigned char *fric = malloc(nframes);
 	double *vb = NULL;
 	kpe_doc tmp = { 0 };
 	int have_tmp = 0;
 	if (!centre || !f0 || !ap || !voiced || !quiet || !cls || !cands || !ncand || !ftr || !btr || !lw || !ls ||
-	    !frames || !level || !hf || !upper || !lowrel || !aps || !fric || spec_init(&spec, sr) != 0 ||
+	    !frames || !level || !hf || !upper || !lowrel || !aps || !start || !fric || spec_init(&spec, sr) != 0 ||
 	    !(w = malloc(sizeof(double) * spec.len))) {
 		fail(msg, msglen, "Out of memory.");
 		goto done;
@@ -1077,44 +1134,56 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 			formants_of(v, g, f);
 			measure(&spec, x, n, centre[k], f, &lw[k]);
 			int c = cls[k];
+			start[k] = 0;
 			if (c == CLS_VOICED || c == CLS_VOICED_FRIC)
-				v[KP_AV] = settle(KP_AV, REF_LEVEL + lw[k].low - rv.low);
+				v[KP_AV] = start[k] = settle(KP_AV, REF_LEVEL + lw[k].low - rv.low);
 			if (c == CLS_VOICED)
 				v[KP_AH] = voiced_ah(v[KP_AV], aps[k]);
 			if (c == CLS_ASPIRATION)
-				v[KP_AH] = settle(KP_AH, REF_LEVEL + lw[k].total - rh.total);
+				v[KP_AH] = start[k] = settle(KP_AH, REF_LEVEL + lw[k].total - rh.total);
 		}
 	}
 	/* formants corrected by analysis-by-synthesis (step 5), then Rd (step 7) with the corrected formants */
 	clock_t t_rd = clock();
-	if (correct_formants(g, frames, nframes, cls, ftr, &spec) != 0)
+	double gc[NG], cal_gain = pow(10, CAL_HEADROOM_DB / 20), pdb;
+	int over;
+	memcpy(gc, g, sizeof gc);
+	gc[KG_G0] -= CAL_HEADROOM_DB;
+	int corrected = correct_formants(gc, frames, nframes, cls, ftr, &spec);
+	if (corrected < 0)
 		goto oom;
+	for (int k = 0; corrected && k < nframes; k++) { /* the WAV's levels in the corrected formants' bands */
+		double f[6];
+		formants_of(frames + (size_t)k * NP, g, f);
+		measure(&spec, x, n, centre[k], f, &lw[k]);
+	}
 	int fitted = 0;
 	if (fit_rd_track(x, n, sr, cls, nframes, frames, &spec, &fitted) != 0)
 		goto oom;
 	clock_t t_cal = clock();
 
-	if (doc_init_from(&tmp, g, nframes, frames) != 0)
+	if (doc_init_from(&tmp, gc, nframes, frames) != 0)
 		goto oom;
 	have_tmp = 1;
-	/* calibration against the synthesizer (step 8): each pass synthesizes the document, measures it like the WAV
-	 * and corrects AV by the low band's dB difference (AH keeping its offset in voiced frames) and AH in
-	 * aspiration frames by the overall level's. The first pass has no frication yet: in fricative frames what the
-	 * WAV has beyond the voicing and aspiration is the frication, and AF and A2-A6 are fitted to its five band
-	 * powers with a model of the parallel resonators (fric_model); later passes scale each band's target by the
-	 * WAV's frication over the synthesis's and fit again */
+	/* calibration against the synthesizer (step 8): each pass synthesizes the document (CAL_HEADROOM_DB below the
+	 * default G0, measured as at the default), measures it like the WAV and corrects AV by the low band's dB
+	 * difference (AH keeping its offset in voiced frames) and AH in aspiration frames by the overall level's
+	 * (cal_step). The first pass has no frication yet: in fricative frames what the WAV has beyond the voicing and
+	 * aspiration is the frication, and AF and A2-A6 are fitted to its five band powers with a model of the parallel
+	 * resonators (fric_model); later passes scale each band's target by the WAV's frication over the synthesis's
+	 * and fit again */
 	for (int pass = 0; pass <= CAL_PASSES; pass++) {
-		if (measure_synth(&tmp, &spec, ls) != 0)
+		if (measure_synth(&tmp, &spec, cal_gain, ls, &pdb, &over) != 0)
 			goto oom;
 		for (int k = 0; k < nframes; k++) {
 			double *v = frames + (size_t)k * NP;
 			int c = cls[k];
 			if (c == CLS_VOICED || c == CLS_VOICED_FRIC)
-				v[KP_AV] = settle(KP_AV, v[KP_AV] + lw[k].low - ls[k].low);
+				v[KP_AV] = cal_step(KP_AV, v[KP_AV], start[k], lw[k].low - ls[k].low);
 			if (c == CLS_VOICED) /* in voiced fricatives the aperiodic energy is the frication's */
 				v[KP_AH] = voiced_ah(v[KP_AV], aps[k]);
 			if (c == CLS_ASPIRATION)
-				v[KP_AH] = settle(KP_AH, v[KP_AH] + lw[k].total - ls[k].total);
+				v[KP_AH] = cal_step(KP_AH, v[KP_AH], start[k], lw[k].total - ls[k].total);
 			if (c != CLS_FRIC && c != CLS_VOICED_FRIC)
 				continue;
 			/* the frication's band powers: the WAV's (and in later passes the synthesis's) less the voicing and
@@ -1154,6 +1223,19 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 			fric_set(v, xj);
 		}
 	}
+	/* verification: a non-silent frame whose synthesis is more than CAL_LOUD_DB louder than the WAV is lowered by the
+	 * excess (a burst where the last pass overshot). The WAV's level is its loudest over the frame and the frames of
+	 * the glottal period before it: the DLL latches AV at each pulse, so a frame's voicing sounds on for up to a
+	 * period, and a decay can only follow the WAV's as fast as that */
+	if (measure_synth(&tmp, &spec, cal_gain, ls, &pdb, &over) != 0)
+		goto oom;
+	for (int k = 0; k < nframes; k++) {
+		double ref = lw[k].total;
+		for (int j = k - import_period_frames(frames[(size_t)k * NP + KP_F0]); j < k; j++)
+			ref = j >= 0 && lw[j].total > ref ? lw[j].total : ref;
+		if (cls[k] != CLS_SILENCE && ls[k].total - ref > CAL_LOUD_DB)
+			lower_frame(frames + (size_t)k * NP, ls[k].total - ref);
+	}
 	/* silence: every amplitude 0 */
 	for (int k = 0; k < nframes; k++)
 		if (cls[k] == CLS_SILENCE)
@@ -1173,23 +1255,32 @@ int import_samples(const double *x0, long n0, int sr_in, const import_options *o
 		}
 		free(v);
 	}
-	/* level normalization: G0 so the resynthesis peaks at about NORM_PEAK_DB; the amplitudes keep their levels */
+	/* level normalization: G0 so the resynthesis peaks at or just below NORM_PEAK_DB; the amplitudes keep their
+	 * levels. Each synthesis without overload predicts the G0 that puts its peak there (the output is linear in
+	 * G0); one that overloads moves NORM_HEADROOM_DB down. The first prediction comes from the verification
+	 * synthesis, made before its corrections, so G0 is set only once a synthesis of the final document at that G0
+	 * predicts that G0 again: then it has no overload and its peak is at or below NORM_PEAK_DB (unless G0 is at its
+	 * minimum), as a G0 that failed is never tried again */
 	{
-		double g0 = g[KG_G0];
-		tmp.globals[KG_G0] = g0 - NORM_HEADROOM_DB;
-		synth_result s;
-		if (synth_doc(&tmp, &s) != 0)
-			goto oom;
-		double peak = 0;
-		for (int i = 0; i < s.n; i++)
-			if (abs(s.pcm[i]) > peak)
-				peak = abs(s.pcm[i]);
-		synth_result_free(&s);
-		if (peak > 0) {
-			double v = floor(g0 - NORM_HEADROOM_DB + NORM_PEAK_DB - 20 * log10(peak / 32768));
-			klatt_param_info pi;
-			KlattParamInfo(KLATT_GLOBAL, KG_G0, &pi);
-			g0 = v < pi.min ? pi.min : v > pi.max ? pi.max : v;
+		klatt_param_info pi;
+		KlattParamInfo(KLATT_GLOBAL, KG_G0, &pi);
+		double g0 = gc[KG_G0], fail_g0 = pi.max + 1; /* the lowest G0 that overloaded or peaked too high */
+		for (int fresh = 0;; fresh = 1) {
+			if (over || pdb > NORM_PEAK_DB)
+				fail_g0 = fresh && g0 < fail_g0 ? g0 : fail_g0;
+			double next = over ? g0 - NORM_HEADROOM_DB : pdb > -1e299 ? floor(g0 + NORM_PEAK_DB - pdb) : g[KG_G0];
+			next = next >= fail_g0 ? fail_g0 - 1 : next;
+			next = next < pi.min ? pi.min : next > pi.max ? pi.max : next;
+			if (fresh && next == g0)
+				break;
+			g0 = next;
+			tmp.globals[KG_G0] = g0;
+			synth_result s;
+			if (synth_doc(&tmp, &s) != 0)
+				goto oom;
+			pdb = peak_db(&s);
+			over = s.overload;
+			synth_result_free(&s);
 		}
 		tmp.globals[KG_G0] = g0;
 	}
@@ -1242,6 +1333,7 @@ done:
 	free(upper);
 	free(lowrel);
 	free(aps);
+	free(start);
 	free(fric);
 	free(vb);
 	return rc;

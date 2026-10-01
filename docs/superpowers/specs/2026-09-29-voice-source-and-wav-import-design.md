@@ -193,8 +193,10 @@ only to synthesize. The GUI adds the menu command and dialog.
 
 ### 4.3 Analysis
 
-Frames are FRAME_MS (5 ms) apart; the analysis window for frame *k* is centred on (k + 0.5)·FRAME_MS, the middle of
-the samples the synthesizer renders for that frame.
+The resampled input is first scaled so that its peak is at -1 dBFS: the amplitudes do not depend on the
+recording's level (a recording 30 dB quieter imports the same document). Frames are FRAME_MS (5 ms) apart; the
+analysis window for frame *k* is centred on (k + 0.5)·FRAME_MS, the middle of the samples the synthesizer renders for
+that frame.
 
 1. **Pitch:** YIN on the signal low-passed at 1.5 kHz (as the YIN paper recommends: unfiltered, a voiced fricative's
    frication hides its voicing), an integration window of one longest period centred on the frame, 40 ms at most, F0
@@ -211,10 +213,11 @@ the samples the synthesizer renders for that frame.
    (no local and no transition cost) and their tracks are interpolated linearly across them. Tracks are clamped to the
    parameter ranges and below 0.45·SR.
 4. **Bandwidths B1-B3:** from the chosen candidates, median-smoothed over 7 frames and clamped to 40-500 Hz.
-5. **Formant correction** (voices whose median voiced F0 is at least 150 Hz, where LPC's harmonic bias matters): two
-   analysis-by-synthesis passes synthesize the document's voicing, run the same LPC on it, and move F1-F3 by the WAV's
-   value minus the synthesis's (the synthesis candidate nearest the current value within 25 %, at most 20 % per pass).
-   Lower voices skip it: it gained them less than it cost.
+5. **Formant correction** (voices whose median voiced F0 is at least 150 Hz, where LPC's harmonic bias matters): three
+   analysis-by-synthesis passes synthesize the document's voicing (12 dB below the default G0, so that it does not
+   clip), run the same LPC on it, and move F1-F3 by the WAV's value minus the synthesis's (the synthesis candidate
+   nearest the current value within 25 %, at most 20 % per pass). Lower voices skip it: it gained them less than it
+   cost. The WAV's band levels (step 8) are then measured again with the corrected formants.
 6. **Frame classes:** silence (more than 50 dB below the loudest frame), voiced, voiced fricative, voiceless
    fricative, or aspiration (voiceless but not fricative, e.g. [h]), from the voiced flag and three measures: the
    fraction of energy above 4 kHz (or 0.35·SR when that is lower); the flatness of the top band (power density from
@@ -253,11 +256,24 @@ the samples the synthesizer renders for that frame.
      least 1 dB, so that the frication of a quiet recording is not switched off (only AF + A*n* matters to the DLL).
      Two more passes synthesize the whole document, scale each band's target by the WAV/synthesis ratio and refit, and
      correct AV and AH again.
+   - Guards: the calibration syntheses run 12 dB below the default G0 (measured as at the default), so that they do
+     not clip. A pass moves AV or AH by at most 12 dB: where F1 and F2 lie close and broad the cascade's gain is
+     20 dB above the reference vowel's, and full corrections through the 25 ms window overshoot from frame to frame.
+     An amplitude that was off (0) in the measured synthesis gets no correction, since the synthesis there is only
+     its neighbours' leakage: it stays off if the leakage already reaches the WAV's level, and otherwise restarts from
+     its start value less the share of the WAV's power the leakage supplies.
+   - Verification: one more synthesis after the last pass. Every non-silent frame more than 6 dB louder than the WAV
+     is lowered by the excess (AV, AH, and AF with A2-A6 through their gains). The WAV's level here is its loudest
+     over the frame and the frames of the glottal period before it: the DLL latches AV at each pulse, so a frame's
+     voicing sounds on for up to a period, and a decay cannot follow the WAV's faster than that.
    - Silence frames get all amplitudes 0. Values are clamped to their ranges and rounded (Rd to 0.01).
 9. **Result:** globals at their defaults except SR (the target), SRC = 1 and FRAME_MS = 5; the frames as analysed.
-   Optionally simplified with Optimize (every frame grid, default tolerances). Finally the document is synthesized
-   once 24 dB below the default G0 and G0 is set to the whole number that puts the resynthesis's peak at or just
-   below -1 dBFS; the amplitudes keep their calibrated values, so AV means the same as in the recording.
+   Optionally simplified with Optimize (every frame grid, default tolerances). Finally G0 is set to the whole number
+   that puts the resynthesis's peak at or just below -1 dBFS: each synthesis without overload predicts that G0 (the
+   output is linear in G0; one that overloads is followed by one 24 dB lower), the first prediction coming from the
+   verification synthesis, and G0 is accepted only when a synthesis of the final document at that G0 predicts it
+   again, so it has no overload and its peak is at or below -1 dBFS (a G0 that failed is never tried again). The
+   amplitudes keep their calibrated values: AV is as if the recording peaked at -1 dBFS at the default G0.
 
 ### 4.4 Voice types
 
@@ -288,10 +304,10 @@ All automated tests use synthetic audio made by the DLL from known documents, so
 - **Units:** WAV reader for every supported format and every refusal; resampler (tone frequency and level, image
   rejection); Burg on a known AR process (coefficients within 1 %); the root finder on polynomials with known roots;
   Viterbi on hand-made candidate sequences, including a missing and a spurious candidate.
-- **Round trip:** `ba.csv`, a female-range vowel sequence, /asa/, /asa/ 48 dB quieter, /aza/, a /z/ with 10 dB weaker
-  frication, an /aʃa/ with its frication at 2-4 kHz, an /ava/ with flat frication over damped voicing, and an Rd sweep
-  (all but `ba.csv` with SRC = 1), synthesized and imported, compared on frames of each class at least 10 ms from a
-  class boundary (in the source document):
+- **Round trip:** `ba.csv` (also 10, 20 and 30 dB quieter), a female-range vowel sequence, /asa/ (also 10, 20, 30
+  and 48 dB quieter), /aza/, a /z/ with 10 dB weaker frication, an /aʃa/ with its frication at 2-4 kHz, an /ava/ with
+  flat frication over damped voicing, and an Rd sweep (all but `ba.csv` with SRC = 1), synthesized and imported,
+  compared on frames of each class at least 10 ms from a class boundary (in the source document):
 
   | Measure | Limit |
   |---|---|
@@ -305,14 +321,20 @@ All automated tests use synthetic audio made by the DLL from known documents, so
   | Every class with at least 10 steady frames | ≥ 90 % of them right |
   | Steady vowel frames with frication | none |
   | Resynthesis | no overload, peak at or below -1 dBFS |
+  | Resynthesis frame levels (frames within 40 dB of the WAV's loudest) | within 3 dB; none more than 10 dB louder |
 
   "Within" is the 90th percentile of the per-frame absolute error. AV and Rd are compared only when the source
   document uses the LF source like the import (so not for `ba.csv`: at equal AV the two sources' low-band levels
   differ by a few dB depending on Rd, and Rd does not mean the same). For a voice whose median steady-voiced F0 is at
-  least 200 Hz, AV and Rd are judged on their medians: a 25 ms LPC cannot resolve B1 when the harmonics are 200 Hz or
-  more apart, and the Rd fit and AV then compensate the wrong bandwidth (female vowels: AV median 2 dB, 90th
-  percentile 7; Rd median 0.11, 90th 1.5). Fricative band levels are compared on bands within 30 dB of the frame's
-  strongest, less the G0 difference.
+  least 200 Hz, AV, Rd and the frame levels are judged on their medians: a 25 ms LPC cannot resolve B1 when the
+  harmonics are 200 Hz or more apart, and the Rd fit and AV then compensate the wrong bandwidth, which leaves the
+  levels above the F1/F2 midpoint off by a few dB (female vowels: AV median 2 dB, 90th
+  percentile 7; Rd median 0.12, 90th 1.6; frame levels median 0.6 dB, 90th 3.2). The import scales its input to a
+  -1 dBFS peak and normalizes G0, so AV is compared with the source's plus that input gain (rounded to AV's 1 dB step),
+  and the resynthesis's levels (fricative bands within 30 dB of the frame's strongest, and whole frames) with the
+  WAV's plus the input gain and the G0 difference. "More than 10 dB louder" is against the WAV's loudest over the
+  frame and the glottal period before it (a burst), since the DLL latches AV at each pulse and a decay lags by up to
+  a period.
 - **Frame classes of the user's recordings** (manual, from the prototype): S and SH import as fricatives, V, Z and
   ZH as voiced fricatives, the vowels as voiced with aspiration only at their onsets and offsets. Known limits: 30 of
   V's 91 frames get no frication (the voicing alone already reaches the recording's level above 1 kHz), and a
@@ -323,11 +345,15 @@ All automated tests use synthetic audio made by the DLL from known documents, so
 
 ### 4.7 Performance
 
-The prototype imports a 60 s, 11025 Hz WAV in 3.9 s on the 32-bit build (2.5 s on 64-bit): analysis 0.9 s, Rd
-1.6 s, calibration and normalization 1.3 s. That needed Rd on every 12th voiced frame, three calibration syntheses,
-a half-size complex FFT for real input, 5 refined YIN dips and tabulated resonator trig. A 48 kHz recording adds
-0.6 s of resampling; the formant correction of a high voice about 0.6 s per minute. The import stays synchronous;
-if the speed test ever misses 5 s, a worker thread with progress and cancel is designed then.
+The import of a 60 s, 11025 Hz WAV (the speed test, an adult male voice) takes 4.5 s on the 32-bit build (2.9 s on
+64-bit): analysis 0.9 s, Rd 1.6 s, calibration, verification and normalization 1.9 s. That needed Rd on every 12th
+voiced frame, three calibration syntheses, a half-size complex FFT for real input, 5 refined YIN dips and tabulated
+resonator trig; the verification synthesis added 0.3 s, and so does a second normalization synthesis when the
+verification lowered the loudest frames (as in the speed test). A 48 kHz recording adds 0.6 s of resampling; the
+formant correction of a high voice about 0.6 s per pass per minute (1.9 s for its three passes). Known limit: a
+60 s female-voice WAV (the round trip's female vowels repeated) takes 6.8 s on 32-bit (5.5 s before the
+calibration guards and the third correction pass), over the 5 s the speed test holds. The import stays
+synchronous; if the speed test ever misses 5 s, a worker thread with progress and cancel is designed then.
 
 ## 5. Changes to the base spec
 
