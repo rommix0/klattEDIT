@@ -113,31 +113,86 @@ static void test_spectrogram_levels(void)
 
 static void test_synth_frame_start(void)
 {
-	double frame_mss[3] = { 3.3, 4.1, 6.4 };
+	double frame_mss[3] = { 3.3, 4.1, 6.4 }, spds[3] = { 1, 1.5, 0.3 };
 	for (int i = 0; i < 3; i++) {
-		kpe_doc d;
-		synth_result s;
-		double g[NG];
-		t_default_globals(g);
-		g[KG_FRAME_MS] = frame_mss[i];
-		CHECK(doc_new(&d, g, 500) == 0);
-		CHECK(synth_doc(&d, &s) == 0);
-		CHECK(s.n == synth_frame_start(&d, d.nframes));
-		int k = d.nframes / 2;
-		/* AH (aspiration noise) excites every sample of the frame, unlike AV which is gated by the pitch
-		 * period and might not pulse within a single short frame. */
-		doc_set(&d, k, KP_AH, 60);
-		synth_result_free(&s);
-		CHECK(synth_doc(&d, &s) == 0);
-		int first_nonzero = -1;
-		for (int j = 0; j < s.n; j++)
-			if (s.pcm[j] != 0) { first_nonzero = j; break; }
-		CHECK(first_nonzero >= 0);
-		CHECK(first_nonzero >= synth_frame_start(&d, k));
-		CHECK(first_nonzero < synth_frame_start(&d, k + 1));
-		synth_result_free(&s);
-		doc_free(&d);
+		for (int j = 0; j < 3; j++) {
+			kpe_doc d;
+			synth_result s;
+			double g[NG], spd = spds[j];
+			t_default_globals(g);
+			g[KG_FRAME_MS] = frame_mss[i];
+			CHECK(doc_new(&d, g, 500) == 0);
+			CHECK(synth_doc_speed(&d, spd, &s) == 0);
+			CHECK(s.n == synth_frame_start(&d, d.nframes, spd));
+			int k = d.nframes / 2;
+			/* AH (aspiration noise) excites every sample of the frame, unlike AV which is gated by the pitch
+			 * period and might not pulse within a single short frame. */
+			doc_set(&d, k, KP_AH, 60);
+			synth_result_free(&s);
+			CHECK(synth_doc_speed(&d, spd, &s) == 0);
+			int first_nonzero = -1;
+			for (int m = 0; m < s.n; m++)
+				if (s.pcm[m] != 0) { first_nonzero = m; break; }
+			CHECK(first_nonzero >= 0);
+			CHECK(first_nonzero >= synth_frame_start(&d, k, spd));
+			CHECK(first_nonzero < synth_frame_start(&d, k + 1, spd));
+			synth_result_free(&s);
+			doc_free(&d);
+		}
 	}
+}
+
+/* The display synthesis shows the document as written: the document's own SPD does not change it. */
+static void test_display_ignores_spd(void)
+{
+	kpe_doc d;
+	synth_result s, t;
+	double g[NG];
+	t_default_globals(g);
+	g[KG_SPD] = 2;
+	CHECK(doc_new(&d, g, 800) == 0);
+	doc_paint(&d, KP_AV, 100, 60, 700, 60);
+	CHECK(synth_doc(&d, &s) == 0);
+	CHECK(s.n == 8820);
+	CHECK(synth_doc_speed(&d, 1, &t) == 0);
+	CHECK(t.n == s.n && memcmp(t.pcm, s.pcm, sizeof(short) * s.n) == 0);
+	synth_result_free(&t);
+	CHECK(synth_doc_speed(&d, d.globals[KG_SPD], &t) == 0);
+	CHECK(t.n == 4410);
+	synth_result_free(&t);
+	synth_result_free(&s);
+	doc_free(&d);
+}
+
+/* The playhead: a sample of the sound played at spd maps back to the document time of the frame playing it. */
+static void test_synth_sample_ms(void)
+{
+	kpe_doc d;
+	double g[NG];
+	t_default_globals(g);
+	g[KG_FRAME_MS] = 4.1;
+	CHECK(doc_new(&d, g, 500) == 0);
+	static const double spds[4] = { 1, 2, 0.5, 1.5 };
+	for (int j = 0; j < 4; j++) {
+		double spd = spds[j], worst = 0, prev = -1;
+		int monotonic = 1;
+		for (int k = 0; k <= d.nframes; k++)
+			worst = fmax(worst, fabs(synth_sample_ms(&d, synth_frame_start(&d, k, spd), spd) - k * 4.1));
+		CHECK(worst < 1e-9);
+		for (long n = 0; n < synth_frame_start(&d, d.nframes, spd); n++) {
+			double ms = synth_sample_ms(&d, n, spd);
+			monotonic &= ms > prev;
+			prev = ms;
+		}
+		CHECK(monotonic);
+		/* inside a frame it moves linearly: halfway through frame 10 is halfway through its 4.1 ms */
+		long a = synth_frame_start(&d, 10, spd), b = synth_frame_start(&d, 11, spd);
+		CHECK_NEAR(synth_sample_ms(&d, a + (b - a) / 2, spd), 41 + 4.1 * ((b - a) / 2) / (double)(b - a), 1e-9);
+	}
+	CHECK_NEAR(synth_sample_ms(&d, 11025, 1), 1000, 4.1); /* SPD 1: the sample's own time, to within a frame */
+	CHECK_NEAR(synth_sample_ms(&d, 11025, 2), 2000, 4.1);
+	CHECK_NEAR(synth_sample_ms(&d, 0, 2), 0, 0);
+	doc_free(&d);
 }
 
 static void test_spectrogram_levels_range_db_guard(void)
@@ -172,5 +227,7 @@ void suite_audio(void)
 	test_spectrogram_peak();
 	test_spectrogram_levels();
 	test_synth_frame_start();
+	test_display_ignores_spd();
+	test_synth_sample_ms();
 	test_spectrogram_levels_range_db_guard();
 }

@@ -7,7 +7,7 @@
 static HWAVEOUT wo;
 static WAVEHDR hdr;
 static short *buf;
-static int first_sample, rate;
+static int first_sample;
 static unsigned generation; /* tells a finished playback's notification from a stale one */
 
 static void CALLBACK done(HWAVEOUT h, UINT msg, DWORD_PTR instance, DWORD_PTR p1, DWORD_PTR p2)
@@ -49,7 +49,6 @@ int audio_play(const short *pcm, int n, int sr, int first, int count)
 		return -1;
 	}
 	first_sample = first;
-	rate = sr;
 	return 0;
 }
 
@@ -71,7 +70,7 @@ int audio_playing(void)
 	return wo != NULL;
 }
 
-double audio_pos_ms(void)
+long audio_pos_sample(void)
 {
 	if (!wo)
 		return -1;
@@ -79,7 +78,7 @@ double audio_pos_ms(void)
 	t.wType = TIME_SAMPLES;
 	if (waveOutGetPosition(wo, &t, sizeof t) != MMSYSERR_NOERROR || t.wType != TIME_SAMPLES)
 		return -1;
-	return (first_sample + (double)t.u.sample) * 1000.0 / rate;
+	return first_sample + (long)t.u.sample;
 }
 
 void audio_finished(WPARAM gen)

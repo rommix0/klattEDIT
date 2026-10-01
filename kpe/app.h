@@ -21,7 +21,8 @@ typedef struct {
 	wchar_t path[MAX_PATH];   /* L"" for a document never saved */
 	wchar_t import_path[MAX_PATH]; /* the WAV an unsaved imported document came from, else L"" */
 
-	synth_result snd;         /* the current synthesis of doc */
+	synth_result snd;         /* the current synthesis of doc, at SPD 1 (the display's) */
+	double play_spd;          /* the SPD of the sound playing, for the playhead */
 	kpe_spectro spec;         /* its spectrogram */
 	unsigned char *levels;    /* spec.ncols * spec.nbins darkness values */
 	int narrowband;
@@ -75,7 +76,7 @@ int dlg_import(HWND owner, import_options *o); /* File > Import WAV's options; 1
 int audio_play(const short *pcm, int n, int sr, int first, int count); /* 0 or -1 */
 void audio_stop(void);
 int audio_playing(void);
-double audio_pos_ms(void);              /* playhead time in the document, or -1 */
+long audio_pos_sample(void);            /* the sample of pcm (audio_play's) playing now, or -1 */
 void audio_finished(WPARAM generation);  /* on WM_APP_PLAYDONE; stale notifications are ignored */
 
 #endif

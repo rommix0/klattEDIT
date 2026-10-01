@@ -159,7 +159,7 @@ static void test_synthesized_glide(void)
 	int gn[N], len = lpc_window_len(s.sr), p = lpc_order(s.sr);
 	unsigned char gq[N] = { 0 };
 	for (int k = 0; k < N; k++) {
-		long c = (synth_frame_start(&d, k) + synth_frame_start(&d, k + 1)) / 2;
+		long c = (synth_frame_start(&d, k, 1) + synth_frame_start(&d, k + 1, 1)) / 2;
 		lpc_frame(x, s.n, c, len, w);
 		lpc_burg(w, len, p, a);
 		gn[k] = lpc_candidates(a, p, s.sr, gc + k * CAND_MAX);

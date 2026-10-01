@@ -31,7 +31,7 @@ static void track(const kpe_doc *d, double fmin, double fmax, double *f0, double
 	for (int i = 0; i < s.n; i++)
 		x[i] = s.pcm[i] / 32768.0;
 	for (int k = 0; k < d->nframes; k++)
-		c[k] = (synth_frame_start(d, k) + synth_frame_start(d, k + 1)) / 2;
+		c[k] = (synth_frame_start(d, k, 1) + synth_frame_start(d, k + 1, 1)) / 2;
 	CHECK(pitch_track(x, s.n, s.sr, c, d->nframes, fmin, fmax, f0, ap, voiced) == 0);
 	free(c);
 	if (xout) {
@@ -166,7 +166,7 @@ static void test_octave_trap(void)
 	int trapped = 0;
 	for (int k = 56; k < 64; k++) {
 		pitch_frame pf;
-		long c = (synth_frame_start(&d, k) + synth_frame_start(&d, k + 1)) / 2;
+		long c = (synth_frame_start(&d, k, 1) + synth_frame_start(&d, k + 1, 1)) / 2;
 		pitch_yin_frame(x, n, 11025, c, 60, 250, &pf);
 		trapped += pf.ncand > 0 && fabs(pf.f0[0] - 60) < 3; /* the best single-frame candidate: an octave down */
 	}

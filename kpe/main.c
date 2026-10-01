@@ -71,15 +71,17 @@ static void update_title(void)
 }
 
 /* The panel lists the globals that matter most while editing; Parameters > Globals shows them all. */
+static const int shown_globals[] = { KG_SR, KG_FRAME_MS, KG_SPD, KG_SRC, KG_NFC, KG_SW, KG_G0, KG_F5, KG_F6 };
+#define NSHOWN_GLOBALS ((int)(sizeof shown_globals / sizeof shown_globals[0]))
+
 static void update_globals_text(void)
 {
-	static const int shown[] = { KG_SR, KG_FRAME_MS, KG_SRC, KG_NFC, KG_SW, KG_G0, KG_F5, KG_F6 };
 	wchar_t t[512];
 	int len = swprintf(t, 512, L"Globals\r\n");
-	for (unsigned i = 0; i < sizeof shown / sizeof shown[0]; i++) {
+	for (int i = 0; i < NSHOWN_GLOBALS; i++) {
 		klatt_param_info pi;
-		KlattParamInfo(KLATT_GLOBAL, shown[i], &pi);
-		len += swprintf(t + len, 512 - len, L"%hs  %g %hs\r\n", pi.name, app.doc.globals[shown[i]],
+		KlattParamInfo(KLATT_GLOBAL, shown_globals[i], &pi);
+		len += swprintf(t + len, 512 - len, L"%hs  %g %hs\r\n", pi.name, app.doc.globals[shown_globals[i]],
 		                strcmp(pi.unit, "-") ? pi.unit : "");
 	}
 	SetWindowTextW(globals_text, t);
@@ -354,13 +356,31 @@ static void cmd_import_wav(void)
 	update_title();
 }
 
+/* The document as Play and Export WAV hear it, at its own SPD: app.snd itself when SPD is 1, else a synthesis
+ * into *tmp (free it with synth_result_free). NULL, after an error message, if that synthesis failed. */
+static const synth_result *heard(synth_result *tmp)
+{
+	memset(tmp, 0, sizeof *tmp);
+	if (app.doc.globals[KG_SPD] == 1)
+		return app.snd.pcm ? &app.snd : NULL;
+	int r = synth_doc_speed(&app.doc, app.doc.globals[KG_SPD], tmp);
+	if (r < 0) {
+		app_error(KlattErrorText(r));
+		return NULL;
+	}
+	return tmp;
+}
+
 static void cmd_export_wav(void)
 {
 	wchar_t path[MAX_PATH] = L"";
+	synth_result tmp;
 	if (!app.snd.pcm || !ask_path(1, L"WAV files (*.wav)\0*.wav\0", L"wav", path))
 		return;
-	if (wav_write(path, app.snd.pcm, app.snd.n, app.snd.sr) < 0)
+	const synth_result *s = heard(&tmp);
+	if (s && wav_write(path, s->pcm, s->n, s->sr) < 0)
 		app_error("The WAV file could not be written.");
+	synth_result_free(&tmp);
 }
 
 /* ---- edit commands ---- */
@@ -468,19 +488,25 @@ static void play(int selection)
 		InvalidateRect(app.plot, NULL, FALSE);
 		return;
 	}
-	if (!app.snd.pcm)
+	if (!app.snd.pcm || (selection && !has_selection()))
 		return;
-	int first = 0, count = app.snd.n;
+	synth_result tmp;
+	const synth_result *s = heard(&tmp);
+	if (!s)
+		return;
+	double spd = app.doc.globals[KG_SPD];
+	int first = 0, count = s->n;
 	if (selection) {
-		if (!has_selection())
-			return;
-		first = (int)synth_frame_start(&app.doc, app.sel_a);
-		count = (int)synth_frame_start(&app.doc, app.sel_b + 1) - first;
+		first = (int)synth_frame_start(&app.doc, app.sel_a, spd);
+		count = (int)synth_frame_start(&app.doc, app.sel_b + 1, spd) - first;
 	}
-	if (audio_play(app.snd.pcm, app.snd.n, app.snd.sr, first, count) < 0) {
+	int r = audio_play(s->pcm, s->n, s->sr, first, count); /* it copies the samples */
+	synth_result_free(&tmp);
+	if (r < 0) {
 		app_error("The sound device could not be opened.");
 		return;
 	}
+	app.play_spd = spd;
 	SetTimer(app.main, 1, 30, NULL);
 }
 
@@ -696,8 +722,9 @@ static void create_panel(void)
 		}
 		y += S(4);
 	}
-	globals_text = child(L"STATIC", L"", SS_LEFT | SS_NOPREFIX, x, y + S(4), w, S(18) * 9, app.panel, 2);
-	panel_content_h = y + S(4) + S(18) * 9 + S(6);
+	int lines = 1 + NSHOWN_GLOBALS; /* the title, then one line each */
+	globals_text = child(L"STATIC", L"", SS_LEFT | SS_NOPREFIX, x, y + S(4), w, S(18) * lines, app.panel, 2);
+	panel_content_h = y + S(4) + S(18) * lines + S(6);
 }
 
 /* ---- main window ---- */
@@ -728,12 +755,14 @@ static LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 	case WM_INITMENUPOPUP:
 		init_menu(GetMenu(h));
 		return 0;
-	case WM_TIMER:
-		app.play_ms = audio_pos_ms();
+	case WM_TIMER: {
+		long n = audio_pos_sample(); /* a sample of the sound at play_spd: map it back to the document's time */
+		app.play_ms = n < 0 ? -1 : synth_sample_ms(&app.doc, n, app.play_spd);
 		if (app.play_ms < 0)
 			KillTimer(h, 1);
 		InvalidateRect(app.plot, NULL, FALSE);
 		return 0;
+	}
 	case WM_APP_PLAYDONE:
 		audio_finished(wp);
 		if (!audio_playing()) {
