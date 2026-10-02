@@ -1,12 +1,13 @@
+![](preview.png)
+
 # klattEDIT
 
-An open-source, 32-bit Windows editor for Klatt (1980) synthesis parameters, and a Klatt 1980 formant
-synthesizer DLL (32- and 64-bit) that other programs can use, with an optional LF voicing source, the flutter
-and diplophonia controls of Klatt & Klatt (1990) and a speaking-speed control.
+First of its kind to be 90%-95% vibe coded by Anthony C. Bartman with the assistance of Claude Opus 5.5. If you notice anything missing or needs touching up in this readme, or features you want me to add, either do a pull request or raise an issue.
+
+An open-source, 32-bit Windows editor for Klatt (1980) synthesis parameters, and a Klatt 1980 formant synthesizer DLL (32- and 64-bit) that other programs can use, with an optional LF voicing source, the flutter and diplophonia controls of Klatt & Klatt (1990) and a speaking-speed control.
 
 - `klatt/`: the synthesizer DLL. See `docs/klatt-dll.md`.
-- `kpe/`: the editor. Its core (document and undo, CSV files, optimization, synthesis, WAV, spectrogram, and the
-  WAV import's analysis) has no user interface and is covered by the tests; the Win32 GUI is built on top of it.
+- `kpe/`: the editor. Its core (document and undo, CSV files, optimization, synthesis, WAV, spectrogram, and the WAV import's analyzer) has no user interface and is covered by the tests; the Win32 GUI is built on top of it.
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
 - Design: `docs/superpowers/specs/2026-09-28-klattedit-design.md`, for the voice source and WAV import
   `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`, and for the speaking speed, cropping,
@@ -33,10 +34,4 @@ changing its pitch (the strips always show it as written). Edit > Crop to select
 Parameters > Optimize smooths tracks (F1-F4 by default) and then simplifies them. A document is a pair of CSV files,
 `name.csv` (one row per frame) and `name.globals.csv`; see the design spec, section 5.7. Try `samples/ba.csv`.
 
-File > Import WAV... turns a recording (PCM or float WAV, any sample rate and channel count, up to 10 minutes) into
-a first draft: F0, voicing, F1-F4, B1-B3, Rd, AV, AH, and frication with its parallel amplitudes, using the LF
-source (SRC = 1), with G0 set so the result peaks at about -1 dBFS. Drag on the recording's waveform to import
-only part of it; choose the voice type (children need a sample rate of about 16000 Hz) and the analysis (Fast,
-Normal or Best). It is a draft for hand editing, not a copy: stops and nasals are not analysed.
-
-Before a release, go through `docs/manual-checklist.md`; `tools/ui/*.ps1` automate part of it.
+File > Import WAV... turns a recording (PCM or float WAV, any sample rate and channel count, up to 10 minutes) into Klatt parameters: F0, voicing, F1-F4, B1-B3, Rd, AV, AH, and frication with its parallel amplitudes, using the LF source (SRC = 1), with G0 set so the result peaks at about -1 dBFS. Drag on the recording's waveform to import only part of it; choose the voice type (children need a sample rate of about 16000 Hz) and the analysis (Fast, Normal or Best). It is a draft for hand editing, not a copy: stops and nasals are not analysed.
