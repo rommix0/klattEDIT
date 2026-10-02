@@ -8,6 +8,8 @@ The design lives in `docs/superpowers/specs/` (base spec `2026-09-28-klattedit-d
 The repository is `C:\Users\abart\Desktop\KPE\klattEDIT` (formerly `kpe_open`; older commits use that name).
 Sources: `klatt/` (the DLL), `kpe/` (the editor and the analysis core; the folder and internal identifiers such as
 `KpeMain` kept their old names), `tests/`, `tools/` (UI scripts, release README), `samples/` (`ba.csv`, Python).
+The program icon is `kpe/klattEDITA.ico` (13 images), embedded by `kpe/kpe.rc` as `IDI_APP` and set on the main
+window class in `kpe/main.c`; replace that file to change the icon.
 The Klatt papers are in `C:\Users\abart\Desktop\KPE\papers`.
 
 ## Hard rules
