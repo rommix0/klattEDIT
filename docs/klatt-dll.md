@@ -9,7 +9,8 @@ with the paper; see "Signal path" below. Version 1.2 adds the speaking speed SPD
 ## Using it
 
 - Include `klatt/klatt.h`; link `libklatt32.a` or `libklatt64.a` from `build/32` or `build/64`, or load the DLL
-  at run time.
+  at run time. A release (`make dist`) has them in `sdk/`: `klatt.h`, this file, `32/` and `64/` (DLL and import
+  library) and `python/klatt.py`.
 - On 32-bit the functions are `__stdcall`, exported under plain names. Python: `ctypes.WinDLL`. See
   `samples/python/klatt.py`.
 - The program and the DLL must have the same bitness.

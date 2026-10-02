@@ -25,7 +25,7 @@ GUI_SRC   := $(addprefix kpe/,main.c strips.c table.c dialogs.c audio.c)
 CORE_SRC  := $(filter-out $(GUI_SRC),$(wildcard kpe/*.c))
 TESTS     := $(OUT)/run_tests.exe
 
-.PHONY: build check all test calibrate golden
+.PHONY: build check all test calibrate golden dist
 build: $(DLL) $(TESTS)
 
 $(OUT):
@@ -78,3 +78,13 @@ test:
 golden: check
 	mkdir -p tests/golden
 	for f in $(OUT)/golden_*.raw; do cp $$f tests/golden/$${f##*/golden_}; done
+
+# The release: the editor, the example and the DLL kit, rebuilt and tested first (dist/ is not committed).
+dist: test
+	rm -rf dist
+	mkdir -p dist/sdk/32 dist/sdk/64 dist/sdk/python
+	cp build/32/kpe.exe build/32/klatt32.dll samples/ba.csv tools/dist/README.txt dist/
+	cp klatt/klatt.h docs/klatt-dll.md dist/sdk/
+	cp build/32/klatt32.dll build/32/libklatt32.a dist/sdk/32/
+	cp build/64/klatt64.dll build/64/libklatt64.a dist/sdk/64/
+	cp samples/python/klatt.py dist/sdk/python/

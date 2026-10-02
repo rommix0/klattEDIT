@@ -21,6 +21,7 @@ Needs winlibs GCC 14.2 in `C:\winlibs\mingw32` and `C:\winlibs\mingw64`, and Git
 /c/winlibs/mingw32/bin/make.exe ARCH=32    # build/32: klatt32.dll + tests
 /c/winlibs/mingw32/bin/make.exe ARCH=64    # build/64: klatt64.dll + tests
 /c/winlibs/mingw32/bin/make.exe test       # both, run the tests, compare 32- and 64-bit output
+/c/winlibs/mingw32/bin/make.exe dist       # test, then the release in dist/ (editor, ba.csv, sdk/; not committed)
 ```
 
 ## The editor
