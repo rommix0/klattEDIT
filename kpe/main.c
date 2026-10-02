@@ -619,7 +619,7 @@ static void command(int id)
 		MessageBoxW(app.main,
 		            L"klattEDIT 1.0\n\n"
 		            L"An open-source editor for Klatt synthesis parameters.\n\n"
-		            L"Synthesizer: Klatt (1980), J. Acoust. Soc. Am. 67, 971-995.",
+		            L"by Anthony C. Bartman (@rommix0)",
 		            L"About", MB_OK | MB_ICONINFORMATION);
 		break;
 	}
