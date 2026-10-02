@@ -5,6 +5,11 @@ Notes for coding agents working on klattEDIT: an open-source Win32 C editor for 
 The design lives in `docs/superpowers/specs/` (base spec `2026-09-28-klattedit-design.md`; DLL 1.1 and WAV import
 `2026-09-29-...`; speed, crop, smoothing `2026-09-30-...`). Read the spec before changing behaviour.
 
+The repository is `C:\Users\abart\Desktop\KPE\klattEDIT` (formerly `kpe_open`; older commits use that name).
+Sources: `klatt/` (the DLL), `kpe/` (the editor and the analysis core; the folder and internal identifiers such as
+`KpeMain` kept their old names), `tests/`, `tools/` (UI scripts, release README), `samples/` (`ba.csv`, Python).
+The Klatt papers are in `C:\Users\abart\Desktop\KPE\papers`.
+
 ## Hard rules
 
 - Clean room: never read `C:\klsyn\src` or `C:\Users\abart\Desktop\prose2000_reborn`; never port Numerical Recipes code
