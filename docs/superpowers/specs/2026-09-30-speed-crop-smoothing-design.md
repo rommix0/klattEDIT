@@ -1,4 +1,4 @@
-# kpe_open: speaking speed, cropping, steadier imports and smoothing
+# klattEDIT: speaking speed, cropping, steadier imports and smoothing
 
 Four additions requested after the user's listening check of the WAV import: a speaking-speed global in the DLL
 and an analysis-quality choice for the import; cropping in the editor and in the import dialog; fewer single-frame
@@ -6,7 +6,7 @@ jumps in imported tracks; and adjustable per-track smoothing in Optimize.
 
 Date: 2026-09-30. Status: approved; the plan-6 prototype's choices and measurements are recorded below (marked
 "Prototype").
-Base design: `2026-09-28-kpe-open-design.md` ("the base spec"); WAV import design:
+Base design: `2026-09-28-klattedit-design.md` ("the base spec"); WAV import design:
 `2026-09-29-voice-source-and-wav-import-design.md` ("the import spec"). Section 7 lists the sections of both that
 this design amends.
 

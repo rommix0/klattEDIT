@@ -1,10 +1,10 @@
-# kpe_open: LF voice source and WAV import
+# klattEDIT: LF voice source and WAV import
 
-Two additions to kpe_open: a Klatt DLL 1.1 with a selectable Liljencrants-Fant (LF) voicing source and two voice
+Two additions to klattEDIT: a Klatt DLL 1.1 with a selectable Liljencrants-Fant (LF) voicing source and two voice
 irregularity controls, and a File > Import WAV command that turns a recording into a Klatt parameter document.
 
 Date: 2026-09-29. Status: approved in brainstorming, pending written-spec review.
-Base design: `2026-09-28-kpe-open-design.md` (called "the base spec" below). Section 5 lists the base-spec sections
+Base design: `2026-09-28-klattedit-design.md` (called "the base spec" below). Section 5 lists the base-spec sections
 this design amends.
 
 ## 1. Goals and non-goals
@@ -461,10 +461,10 @@ bbb9fa2). The import stays synchronous; if the speed test ever misses 5 s, a wor
 
 ## 5. Changes to the base spec
 
-Applied to `2026-09-28-kpe-open-design.md` by the implementing plans:
+Applied to `2026-09-28-klattedit-design.md` by the implementing plans:
 
 - §1: resynthesis moves from non-goals to this design.
-- §3: the repository is now `C:\Users\abart\Desktop\KPE\kpe_open`, with new analysis files in `kpe/`.
+- §3: the repository is now `C:\Users\abart\Desktop\KPE\klattEDIT`, with new analysis files in `kpe/`.
 - §4.1: source selection (SRC), the LF source, Rd's tilt on the 1980 source, FL/DI, the noise changes and the radiation's new place.
 - §4.2: the four new rows; counts 23 and 20; Rd's resolution; the frame and global orders.
 - §4.4: `KlattParamCount` returns 23 or 20; version 1.1.0.

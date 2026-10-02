@@ -33,7 +33,7 @@ static void set_number(HWND dlg, int id, double v)
 /* Shows msg and puts the focus on the field; returns 0 for use in validation. */
 static int reject(HWND dlg, int id, const wchar_t *msg)
 {
-	MessageBoxW(dlg, msg, L"Klatt Parameter Editor", MB_OK | MB_ICONWARNING);
+	MessageBoxW(dlg, msg, L"klattEDIT", MB_OK | MB_ICONWARNING);
 	HWND f = GetDlgItem(dlg, id);
 	SetFocus(f);
 	SendMessageW(f, EM_SETSEL, 0, -1);

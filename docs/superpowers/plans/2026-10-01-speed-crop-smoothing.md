@@ -19,7 +19,7 @@ presets, a Hampel filter, formant smoothing within class runs and AH hysteresis.
 PowerShell for the UI scripts.
 
 **Spec:** `docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md` (all of it). It amends the base spec
-(`2026-09-28-kpe-open-design.md`) and the import spec (`2026-09-29-voice-source-and-wav-import-design.md`), which
+(`2026-09-28-klattedit-design.md`) and the import spec (`2026-09-29-voice-source-and-wav-import-design.md`), which
 Task 9 updates.
 
 **Status of the code below:** every task was built and run in order before the plan was written, each on the
@@ -32,7 +32,7 @@ by eye.
 
 ## Global Constraints
 
-- Repository root: `C:\Users\abart\Desktop\KPE\kpe_open` (git, branch as set up by the controller).
+- Repository root: `C:\Users\abart\Desktop\KPE\klattEDIT` (git, branch as set up by the controller).
 - Shell: Git Bash. All commands run from the repository root. `MAKE` means `/c/winlibs/mingw32/bin/make.exe`.
 - Flags: `-std=gnu11 -O2 -Wall -Wextra` (from the Makefile). The build must produce **zero warnings**.
 - The Makefile picks up every `kpe/*.c` and `tests/*.c` by wildcard: new files need no Makefile change.
@@ -1103,7 +1103,7 @@ END
 - [ ] **Step 5: Run the tests and the UI script**
 
 Run: `MAKE test`
-Expected: `2336 checks, 0 failures` twice, then `xarch: 56226 samples, max difference 0 LSB: ok`; `build/32/kpe.exe`
+Expected: `2336 checks, 0 failures` twice, then `xarch: 56226 samples, max difference 0 LSB: ok`; `build/32/klattEDIT.exe`
 built without warnings.
 
 Run: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/ui/check_main.ps1`
@@ -2823,7 +2823,7 @@ Expected: `2802 checks, 0 failures` twice, then `xarch: 56226 samples, max diffe
 print Normal (male) and Fast (high voice); on the 32-bit build both were 4.4 s (limit 5 s).
 
 Run: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/ui/check_import.ps1`
-Expected: ends with `after the error: ui_import.wav* - Klatt Parameter Editor`; `build/ui/ui_import_dialog.png`
+Expected: ends with `after the error: ui_import.wav* - klattEDIT`; `build/ui/ui_import_dialog.png`
 shows "Analysis: Normal". (If it stops at "Export WAV wrote no file", a keyboard-focus flake, run it again.)
 
 - [ ] **Step 6: Commit**
@@ -5350,7 +5350,7 @@ In `tools/ui/check_import.ps1`, replace:
 TypePath (WaitDialog "Open") "$Repo\samples\ba.csv"
 $dlg = WaitDialog "Import WAV"
 [U]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]$IDOK, [IntPtr]::Zero) | Out-Null
-$err = WaitDialog "Klatt Parameter Editor"
+$err = WaitDialog "klattEDIT"
 Shot $err "ui_import_error"
 ```
 
@@ -5358,7 +5358,7 @@ with:
 
 ```
 TypePath (WaitDialog "Open") "$Repo\samples\ba.csv"
-$err = WaitDialog "Klatt Parameter Editor"                                                 # read first: no Import dialog
+$err = WaitDialog "klattEDIT"                                                 # read first: no Import dialog
 Shot $err "ui_import_error"
 ```
 
@@ -5396,14 +5396,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 9: Documentation
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`,
+- Modify: `docs/superpowers/specs/2026-09-28-klattedit-design.md`,
   `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`,
   `docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md`, `docs/klatt-dll.md`,
   `docs/manual-checklist.md`, `README.md`
 
 - [ ] **Step 1: The base spec**
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
     csvio.c/.h      CSV pair load/save (no Win32)
@@ -5419,7 +5419,7 @@ with:
     spectro.c/.h    FFT and spectrogram image (no Win32)
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
     wavimport.c/.h  WAV import pipeline (no Win32)
@@ -5434,7 +5434,7 @@ with:
     app.h, resource.h  state and IDs shared by the GUI files
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -5452,7 +5452,7 @@ added in DLL 1.1, and SPD (global) added in DLL 1.2. The paper's SR and NWS beco
 
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 | global | FL | flutter | % | 0 | 100 | 0 |
@@ -5488,7 +5488,7 @@ diplophonia, the noise and the AF/AH ramps run in real time, and values still ch
 
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 int         KlattVersion(void);
@@ -5504,7 +5504,7 @@ int         KlattParamCount(int kind);                          /* 23 or 21 (1.1
 int         KlattParamInfo(int kind, int index, klatt_param_info *out);
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -5519,7 +5519,7 @@ with:
 - Globals are fixed for a handle's lifetime. To change them, create a new handle.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - **Left panel:** a checkbox per parameter, grouped (Source: F0, AV, AF, AH, AVS; Voice: Rd, DI; Cascade: F1-F4
@@ -5537,7 +5537,7 @@ with:
 - **Strips:** one strip per ticked parameter, stacked, each with its own Y axis showing units and automatically
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - **Selection:** drag in the time ruler to select a time range across all strips. Edit menu: Cut, Copy, Paste,
@@ -5558,7 +5558,7 @@ with:
 - **Undo/Redo:** unlimited. Each step stores only the frames and parameters it changed (or the old globals).
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - After every completed edit (mouse release, cell commit, dialog OK), the document is synthesized again through
@@ -5583,7 +5583,7 @@ with:
 - File > Export WAV… writes 16-bit mono PCM at SR.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
   (AV = AF = AH = AVS = 0) with the frame parameters at their defaults.
@@ -5606,7 +5606,7 @@ with:
 - **Help > Parameter reference:** the parameter table, read from the DLL.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -5632,7 +5632,7 @@ with:
 - **Algorithm:** Douglas-Peucker restricted to grid times. It keeps the fewest breakpoints for which linear
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - **Preview:** the original track stays visible as a faint line under the result, and the dialog lists each track's
@@ -5649,7 +5649,7 @@ with:
 - **Apply** is one undo step; Cancel restores the original.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
   1980 source, flutter, diplophonia, white noise and the AF/AH ramps (`tests/test_synth_source.c`).
@@ -5674,7 +5674,7 @@ with:
 
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -6009,7 +6009,7 @@ In `docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md`, replace:
 ```markdown
 
 Date: 2026-09-30. Status: approved in brainstorming, pending written-spec review.
-Base design: `2026-09-28-kpe-open-design.md` ("the base spec"); WAV import design:
+Base design: `2026-09-28-klattedit-design.md` ("the base spec"); WAV import design:
 ```
 
 with:
@@ -6018,7 +6018,7 @@ with:
 
 Date: 2026-09-30. Status: approved; the plan-6 prototype's choices and measurements are recorded below (marked
 "Prototype").
-Base design: `2026-09-28-kpe-open-design.md` ("the base spec"); WAV import design:
+Base design: `2026-09-28-klattedit-design.md` ("the base spec"); WAV import design:
 ```
 
 In `docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md`, replace:
@@ -6501,7 +6501,7 @@ In `README.md`, replace:
 
 ```markdown
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
-- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, and for the voice source and WAV import
+- Design: `docs/superpowers/specs/2026-09-28-klattedit-design.md`, and for the voice source and WAV import
   `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`.
 
 ```
@@ -6510,7 +6510,7 @@ with:
 
 ```markdown
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
-- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, for the voice source and WAV import
+- Design: `docs/superpowers/specs/2026-09-28-klattedit-design.md`, for the voice source and WAV import
   `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`, and for the speaking speed, cropping,
   steadier imports and smoothing `docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md`.
 
@@ -6555,7 +6555,7 @@ Expected: as after Task 8 (`2896 checks, 0 failures` twice, `0 LSB`).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-09-28-kpe-open-design.md docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md docs/klatt-dll.md docs/manual-checklist.md README.md
+git add docs/superpowers/specs/2026-09-28-klattedit-design.md docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md docs/klatt-dll.md docs/manual-checklist.md README.md
 git commit -m "Document speaking speed, cropping, steadier imports and smoothing
 
 The base spec gains SPD (DLL 1.2), Crop to selection, Play/Export at SPD,
@@ -6575,7 +6575,7 @@ This task is done by the controller with the user; no implementer is dispatched.
 
 - [ ] **Step 1: Ask the user to listen**
 
-Ask the user to go through the new items of `docs/manual-checklist.md` in `build/32/kpe.exe`: `samples/ba.csv` at
+Ask the user to go through the new items of `docs/manual-checklist.md` in `build/32/klattEDIT.exe`: `samples/ba.csv` at
 SPD 0.5 and 2 (same pitch, slower and faster; the playhead follows), Crop to selection and Undo, Optimize smoothing on
 an imported F3/F4, and re-importing the recordings in `C:\Users\abart\Desktop\fwavs` with each preset and with a
 dragged range, checking the formant tracks for jumps (known limit: the /v/'s F1 in three short stretches). Stop

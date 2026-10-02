@@ -27,7 +27,7 @@ synthetic corpus of `tests/test_wavimport.c` and on the user's recordings; their
 
 ## Global Constraints
 
-- Repository root: `C:\Users\abart\Desktop\KPE\kpe_open` (git, branch as set up by the controller).
+- Repository root: `C:\Users\abart\Desktop\KPE\klattEDIT` (git, branch as set up by the controller).
 - Shell: Git Bash. All commands run from the repository root. `MAKE` means `/c/winlibs/mingw32/bin/make.exe`.
 - Flags: `-std=gnu11 -O2 -Wall -Wextra` (from the Makefile). The build must produce **zero warnings**.
 - The Makefile picks up every `kpe/*.c` and `tests/*.c` by wildcard: new files need no Makefile change.
@@ -5235,7 +5235,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Create: `tools/ui/check_import.ps1`
 - Modify: `kpe/main.c`, `kpe/dialogs.c`, `kpe/app.h`, `kpe/kpe.rc`, `kpe/resource.h`, `docs/manual-checklist.md`,
-  `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, `README.md`
+  `docs/superpowers/specs/2026-09-28-klattedit-design.md`, `README.md`
 
 **Interfaces:**
 - Consumes: `import_options`, `import_voice`, `VOICE_COUNT`, `import_wav` (Task 6).
@@ -5312,7 +5312,7 @@ $WM_COMMAND = 0x111
 $IDM_SAVEAS = 1004; $IDM_EXPORTWAV = 1005; $IDM_IMPORTWAV = 1007; $IDOK = 1; $IDCANCEL = 2; $IDNO = 7
 
 $wav = "$Out\ui_import.wav"; Remove-Item $wav -ErrorAction SilentlyContinue
-$p = Start-Process -FilePath "$Repo\build\32\kpe.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
+$p = Start-Process -FilePath "$Repo\build\32\klattEDIT.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
 Start-Sleep -Milliseconds 1500
 $p.Refresh(); $main = $p.MainWindowHandle
 try {
@@ -5327,7 +5327,7 @@ TypePath (WaitDialog "Open") $wav
 $dlg = WaitDialog "Import WAV"
 Shot $dlg "ui_import_dialog"
 [U]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]$IDOK, [IntPtr]::Zero) | Out-Null
-WaitTitle $main "ui_import.wav* - Klatt Parameter Editor"
+WaitTitle $main "ui_import.wav* - klattEDIT"
 Start-Sleep -Milliseconds 500
 Shot $main "ui_import_result"
 "imported: $(Title $main)"
@@ -5342,16 +5342,16 @@ if (-not ($names -contains "ui_import.csv")) { throw "Save As suggests '$($names
 Start-Sleep -Milliseconds 400
 
 [U]::PostMessageW($main, $WM_COMMAND, [IntPtr]$IDM_IMPORTWAV, [IntPtr]::Zero) | Out-Null   # a CSV file as the WAV
-$ask = WaitDialog "Klatt Parameter Editor"                                                 # unsaved changes: No
+$ask = WaitDialog "klattEDIT"                                                 # unsaved changes: No
 [U]::PostMessageW($ask, $WM_COMMAND, [IntPtr]$IDNO, [IntPtr]::Zero) | Out-Null
 TypePath (WaitDialog "Open") "$Repo\samples\ba.csv"
 $dlg = WaitDialog "Import WAV"
 [U]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]$IDOK, [IntPtr]::Zero) | Out-Null
-$err = WaitDialog "Klatt Parameter Editor"
+$err = WaitDialog "klattEDIT"
 Shot $err "ui_import_error"
 [U]::PostMessageW($err, $WM_COMMAND, [IntPtr]$IDOK, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 400
-WaitTitle $main "ui_import.wav* - Klatt Parameter Editor"
+WaitTitle $main "ui_import.wav* - klattEDIT"
 "after the error: $(Title $main)"
 } finally {
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
@@ -5600,7 +5600,7 @@ static void update_title(void)
 	for (const wchar_t *p = app.path; *p; p++)
 		if (*p == L'\\' || *p == L'/')
 			name = p + 1;
-	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - Klatt Parameter Editor", app.path[0] ? name : L"Untitled",
+	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - klattEDIT", app.path[0] ? name : L"Untitled",
 	         app.doc.dirty ? L"*" : L"");
 	SetWindowTextW(app.main, t);
 ```
@@ -5625,7 +5625,7 @@ static void update_title(void)
 	wchar_t t[MAX_PATH + 64];
 	const wchar_t *name = app.path[0] ? file_name(app.path) : app.import_path[0] ? file_name(app.import_path)
 		: L"Untitled";
-	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - Klatt Parameter Editor", name, app.doc.dirty ? L"*" : L"");
+	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - klattEDIT", name, app.doc.dirty ? L"*" : L"");
 	SetWindowTextW(app.main, t);
 ```
 
@@ -5779,11 +5779,11 @@ with:
 - [ ] **Step 6: Build and run the UI scripts**
 
 Run: `MAKE test`
-Expected: `1635 checks, 0 failures` twice, `xarch: 45201 samples, max difference 0 LSB: ok`, and `build/32/kpe.exe`
+Expected: `1635 checks, 0 failures` twice, `xarch: 45201 samples, max difference 0 LSB: ok`, and `build/32/klattEDIT.exe`
 built without warnings.
 
 Run: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/ui/check_import.ps1`
-Expected: ends with `after the error: ui_import.wav* - Klatt Parameter Editor`. Look at
+Expected: ends with `after the error: ui_import.wav* - klattEDIT`. Look at
 `build/ui/ui_import_dialog.png` (voice type, sample rate, the note on children's voices, the Simplify checkbox)
 and `build/ui/ui_import_result.png` (the imported document's tracks).
 
@@ -5794,7 +5794,7 @@ Expected: `saved ui_after_cancel` and `message box after play: 0` at their ends.
 
 The base spec's Part B items (spec section 5: sections 1, 3, 5.5, 8 and 9):
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - Resynthesis from WAV (see section 9, future work).
@@ -5809,7 +5809,7 @@ with:
 - A command-line synthesis tool.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
     view.c/.h       plot geometry: strip layout, mapping, ticks (no Win32)
@@ -5829,7 +5829,7 @@ with:
     app.h, resource.h  state and IDs shared by the GUI files
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
     table.c         frame table window
@@ -5845,7 +5845,7 @@ with:
     audio.c         waveOut playback
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
   (AV = AF = AH = AVS = 0) with the frame parameters at their defaults.
@@ -5862,7 +5862,7 @@ with:
 - **Help > Parameter reference:** the parameter table, read from the DLL.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -5880,7 +5880,7 @@ with:
 **Manual:** a GUI checklist in `docs/` covering painting, the line tool, selection, the frame table, playback,
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -5900,7 +5900,7 @@ with:
 In `docs/manual-checklist.md`, replace:
 
 ```markdown
-Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe.exe samples/ba.csv`.
+Run before a release, at 100 % and at 150 % display scaling. Start `build/32/klattEDIT.exe samples/ba.csv`.
 `tools/ui/check_main.ps1` and `tools/ui/check_edit.ps1` automate part of this and save screenshots in
 `build/ui/`; the items below are the ones that need a person.
 
@@ -5909,7 +5909,7 @@ Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe
 with:
 
 ```markdown
-Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe.exe samples/ba.csv`.
+Run before a release, at 100 % and at 150 % display scaling. Start `build/32/klattEDIT.exe samples/ba.csv`.
 `tools/ui/check_main.ps1`, `tools/ui/check_edit.ps1` and `tools/ui/check_import.ps1` automate part of this and
 save screenshots in `build/ui/`; the items below are the ones that need a person.
 
@@ -5987,7 +5987,7 @@ Before a release, go through `docs/manual-checklist.md`; `tools/ui/*.ps1` automa
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tools/ui/check_import.ps1 kpe/main.c kpe/dialogs.c kpe/app.h kpe/kpe.rc kpe/resource.h docs/manual-checklist.md docs/superpowers/specs/2026-09-28-kpe-open-design.md README.md
+git add tools/ui/check_import.ps1 kpe/main.c kpe/dialogs.c kpe/app.h kpe/kpe.rc kpe/resource.h docs/manual-checklist.md docs/superpowers/specs/2026-09-28-klattedit-design.md README.md
 git commit -m "Add File > Import WAV to the editor
 
 Menu item next to Export WAV, the import dialog (voice type, sample rate
@@ -6009,7 +6009,7 @@ This task is done by the controller with the user; no implementer is dispatched.
 - [ ] **Step 1: Ask the user to listen**
 
 Ask the user to import each recording in `C:\Users\abart\Desktop\fextr_sept2026\wavs` (AE, IH, OW, S, SH, V, Z, ZH;
-adult male, 11025 Hz) in `build/32/kpe.exe`, play the result and compare, going through the "Import WAV" items of
+adult male, 11025 Hz) in `build/32/klattEDIT.exe`, play the result and compare, going through the "Import WAV" items of
 `docs/manual-checklist.md`. The known limits (spec 4.6): part of V gets no frication, and a burst shorter than 40 ms
 imports as aspiration. Stop here until the user answers.
 

@@ -46,7 +46,7 @@ endif
 $(TESTS): $(TEST_SRC) $(CORE_SRC) $(wildcard tests/*.h kpe/*.h) $(DLL) | $(OUT)
 	$(CC) $(CFLAGS) -DKPE_TESTING -Itests -Ikpe -o $@ $(TEST_SRC) $(CORE_SRC) $(IMPLIB) -static
 
-KPE := $(OUT)/kpe.exe
+KPE := $(OUT)/klattEDIT.exe
 ifeq ($(ARCH),32)
 build: $(KPE)
 endif
@@ -83,7 +83,7 @@ golden: check
 dist: test
 	rm -rf dist
 	mkdir -p dist/sdk/32 dist/sdk/64 dist/sdk/python
-	cp build/32/kpe.exe build/32/klatt32.dll samples/ba.csv tools/dist/README.txt dist/
+	cp build/32/klattEDIT.exe build/32/klatt32.dll samples/ba.csv tools/dist/README.txt dist/
 	cp klatt/klatt.h docs/klatt-dll.md dist/sdk/
 	cp build/32/klatt32.dll build/32/libklatt32.a dist/sdk/32/
 	cp build/64/klatt64.dll build/64/libklatt64.a dist/sdk/64/

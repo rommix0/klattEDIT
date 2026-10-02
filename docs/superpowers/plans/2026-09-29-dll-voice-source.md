@@ -26,7 +26,7 @@ bit-identical after every task. The calibration constants are the measured value
 
 ## Global Constraints
 
-- Repository root: `C:\Users\abart\Desktop\KPE\kpe_open` (git, branch as set up by the controller).
+- Repository root: `C:\Users\abart\Desktop\KPE\klattEDIT` (git, branch as set up by the controller).
 - Shell: Git Bash. All commands run from the repository root. `MAKE` means `/c/winlibs/mingw32/bin/make.exe`.
 - Flags: `-std=gnu11 -O2 -Wall -Wextra` (from the Makefile). The build must produce **zero warnings**.
 - The DLL contains only synthesis, the parameter table and error text: no file I/O, no Win32 UI, no documents.
@@ -2552,7 +2552,7 @@ with:
 - [ ] **Step 8: Run the tests on both architectures**
 
 Run: `MAKE test`
-Expected: `870 checks, 0 failures` twice; `xarch: 33074 samples, max difference 0 LSB: ok`; `build/32/kpe.exe`
+Expected: `870 checks, 0 failures` twice; `xarch: 33074 samples, max difference 0 LSB: ok`; `build/32/klattEDIT.exe`
 built without warnings.
 
 - [ ] **Step 9: Run the UI scripts and the Python sample**
@@ -2586,7 +2586,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 6: Documentation
 
 **Files:**
-- Modify: `docs/klatt-dll.md`, `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, `docs/manual-checklist.md`,
+- Modify: `docs/klatt-dll.md`, `docs/superpowers/specs/2026-09-28-klattedit-design.md`, `docs/manual-checklist.md`,
   `README.md`
 
 - [ ] **Step 1: The DLL guide**
@@ -2718,11 +2718,11 @@ with:
 
 - [ ] **Step 2: The base spec (the Part A items of the new spec's section 5)**
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
-`C:\Users\abart\Desktop\KPE\kpe_open`, its own git repository.
+`C:\Users\abart\Desktop\KPE\klattEDIT`, its own git repository.
 
 ```
 
@@ -2730,11 +2730,11 @@ with:
 
 ```markdown
 
-`C:\Users\abart\Desktop\KPE\kpe_open`, its own git repository.
+`C:\Users\abart\Desktop\KPE\klattEDIT`, its own git repository.
 
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -2753,7 +2753,7 @@ describe the 1980 source as it still is.
 - **Voicing source:** an impulse train at F0, started pitch-synchronously, through the glottal resonator RGP
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 
@@ -2771,7 +2771,7 @@ added in DLL 1.1. The paper's SR and NWS become `SR` and `FRAME_MS`.
 
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 | global | NFC | number of cascade formants | - | 4 | 6 | 5 |
@@ -2795,7 +2795,7 @@ The frame parameter order is AV AF AH AVS F0 F1 F2 F3 F4 FNZ AN A1 A2 A3 A4 A5 A
 
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 int         KlattVersion(void);
@@ -2811,7 +2811,7 @@ int         KlattParamCount(int kind);                          /* 23 or 20 (1.0
 int         KlattParamInfo(int kind, int index, klatt_param_info *out);
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - **Menu bar:** File, Edit, Sound, Parameters, View, Help.
@@ -2830,7 +2830,7 @@ with:
 - **Strips:** one strip per ticked parameter, stacked, each with its own Y axis showing units and automatically
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
   grid (every frame, 5 ms or 10 ms; grids that are not a multiple of FRAME_MS are disabled), and a tolerance per
@@ -2846,7 +2846,7 @@ with:
 - **Algorithm:** Douglas-Peucker restricted to grid times. It keeps the fewest breakpoints for which linear
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - **Saving** writes both files, each to a temporary file first and then renamed over the target. The frame file
@@ -2862,7 +2862,7 @@ with:
 - **Prompts:** unsaved changes prompt before New, Open and Exit.
 ```
 
-In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
+In `docs/superpowers/specs/2026-09-28-klattedit-design.md`, replace:
 
 ```markdown
 - **Cross-architecture:** 32- and 64-bit output for the same input agree within 1 LSB.
@@ -2953,7 +2953,7 @@ In `README.md`, replace:
 
 ```markdown
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
-- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`.
+- Design: `docs/superpowers/specs/2026-09-28-klattedit-design.md`.
 
 ```
 
@@ -2961,7 +2961,7 @@ with:
 
 ```markdown
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
-- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, and for the voice source and WAV import
+- Design: `docs/superpowers/specs/2026-09-28-klattedit-design.md`, and for the voice source and WAV import
   `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`.
 
 ```
@@ -2974,7 +2974,7 @@ Expected: as after Task 5 (`870 checks, 0 failures` twice, `0 LSB`).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/klatt-dll.md docs/superpowers/specs/2026-09-28-kpe-open-design.md docs/manual-checklist.md README.md
+git add docs/klatt-dll.md docs/superpowers/specs/2026-09-28-klattedit-design.md docs/manual-checklist.md README.md
 git commit -m "Document DLL 1.1: LF source, Rd, flutter, diplophonia, noise
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -2988,7 +2988,7 @@ This task is done by the controller with the user; no implementer is dispatched.
 
 - [ ] **Step 1: Ask the user to listen**
 
-Ask the user to open `samples/ba.csv` in `build/32/kpe.exe` and press Space, then to go through the "Listening,
+Ask the user to open `samples/ba.csv` in `build/32/klattEDIT.exe` and press Space, then to go through the "Listening,
 voice source" item of `docs/manual-checklist.md` (SRC = 1, painting Rd, FL = 50, DI = 50). Stop here until the
 user answers.
 

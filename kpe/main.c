@@ -33,7 +33,7 @@ void app_error(const char *utf8)
 {
 	wchar_t w[1024];
 	MultiByteToWideChar(CP_UTF8, 0, utf8, -1, w, 1024);
-	MessageBoxW(app.main, w, L"Klatt Parameter Editor", MB_OK | MB_ICONWARNING);
+	MessageBoxW(app.main, w, L"klattEDIT", MB_OK | MB_ICONWARNING);
 }
 
 void app_status(const wchar_t *text)
@@ -66,7 +66,7 @@ static void update_title(void)
 	wchar_t t[MAX_PATH + 64];
 	const wchar_t *name = app.path[0] ? file_name(app.path) : app.import_path[0] ? file_name(app.import_path)
 		: L"Untitled";
-	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - Klatt Parameter Editor", name, app.doc.dirty ? L"*" : L"");
+	swprintf(t, sizeof t / sizeof t[0], L"%ls%ls - klattEDIT", name, app.doc.dirty ? L"*" : L"");
 	SetWindowTextW(app.main, t);
 }
 
@@ -275,7 +275,7 @@ static int confirm_discard(void)
 {
 	if (!app.doc.dirty)
 		return 1;
-	int r = MessageBoxW(app.main, L"Save changes to this document?", L"Klatt Parameter Editor",
+	int r = MessageBoxW(app.main, L"Save changes to this document?", L"klattEDIT",
 	                    MB_YESNOCANCEL | MB_ICONQUESTION);
 	if (r == IDYES)
 		return save();
@@ -617,7 +617,7 @@ static void command(int id)
 	case IDM_PARAMREF: dlg_paramref(app.main); break;
 	case IDM_ABOUT:
 		MessageBoxW(app.main,
-		            L"Klatt Parameter Editor (kpe_open) 1.0\n\n"
+		            L"klattEDIT 1.0\n\n"
 		            L"An open-source editor for Klatt synthesis parameters.\n\n"
 		            L"Synthesizer: Klatt (1980), J. Acoust. Soc. Am. 67, 971-995.",
 		            L"About", MB_OK | MB_ICONINFORMATION);
@@ -883,7 +883,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmdline, int show)
 	RegisterClassExW(&wc);
 	plot_register(inst);
 
-	app.main = CreateWindowExW(0, L"KpeMain", L"Klatt Parameter Editor", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+	app.main = CreateWindowExW(0, L"KpeMain", L"klattEDIT", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
 	                           CW_USEDEFAULT, CW_USEDEFAULT, S(1100), S(760), NULL, NULL, inst, NULL);
 	app.status = CreateWindowExW(0, STATUSCLASSNAMEW, L"", WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP, 0, 0, 0, 0,
 	                             app.main, NULL, inst, NULL);

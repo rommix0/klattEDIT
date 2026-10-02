@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the parts of the Klatt Parameter Editor that contain no user interface, each tested without a
+**Goal:** Build the parts of klattEDIT that contain no user interface, each tested without a
 GUI:
 - the document model with edits and undo;
 - the CSV file pair;
@@ -17,7 +17,7 @@ GDI or sound.
 
 **Tech Stack:** C (gnu11), winlibs GCC 14.2, GNU make, the Klatt DLL from plan 1.
 
-**Spec:** `docs/superpowers/specs/2026-09-28-kpe-open-design.md` (sections 5.2, 5.3, 5.4, 5.6, 5.7, 6, 8).
+**Spec:** `docs/superpowers/specs/2026-09-28-klattedit-design.md` (sections 5.2, 5.3, 5.4, 5.6, 5.7, 6, 8).
 **Prerequisite:** plan 1 (`docs/superpowers/plans/2026-09-28-klatt-dll.md`) completed; `MAKE test` passes.
 
 **Status of the code below:** compiled and run before the plan was written. The full suite passed on both

@@ -1,8 +1,8 @@
 # AGENTS.md
 
-Notes for coding agents working on kpe_open: an open-source Win32 C editor for Klatt synthesis parameters
-(`kpe.exe`) with its own Klatt synthesizer DLL (`klatt32.dll`/`klatt64.dll`) and a WAV import (copy synthesis).
-The design lives in `docs/superpowers/specs/` (base spec `2026-09-28-kpe-open-design.md`; DLL 1.1 and WAV import
+Notes for coding agents working on klattEDIT: an open-source Win32 C editor for Klatt synthesis parameters
+(`klattEDIT.exe`) with its own Klatt synthesizer DLL (`klatt32.dll`/`klatt64.dll`) and a WAV import (copy synthesis).
+The design lives in `docs/superpowers/specs/` (base spec `2026-09-28-klattedit-design.md`; DLL 1.1 and WAV import
 `2026-09-29-...`; speed, crop, smoothing `2026-09-30-...`). Read the spec before changing behaviour.
 
 ## Hard rules
@@ -22,7 +22,7 @@ The design lives in `docs/superpowers/specs/` (base spec `2026-09-28-kpe-open-de
 
 ```bash
 /c/winlibs/mingw32/bin/make.exe test       # 32 + 64 bit runners, then "xarch: ... max difference 0 LSB: ok"
-/c/winlibs/mingw32/bin/make.exe ARCH=32    # also builds the editor build/32/kpe.exe
+/c/winlibs/mingw32/bin/make.exe ARCH=32    # also builds the editor build/32/klattEDIT.exe
 /c/winlibs/mingw32/bin/make.exe dist       # test, then the release in dist/ (git-ignored)
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/ui/check_main.ps1   # also check_edit, check_import
 ```

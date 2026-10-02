@@ -1,6 +1,6 @@
 # Editor manual checklist
 
-Run before a release, at 100 % and at 150 % display scaling. Start `build/32/kpe.exe samples/ba.csv`.
+Run before a release, at 100 % and at 150 % display scaling. Start `build/32/klattEDIT.exe samples/ba.csv`.
 `tools/ui/check_main.ps1`, `tools/ui/check_edit.ps1` and `tools/ui/check_import.ps1` automate part of this and
 save screenshots in `build/ui/`; the items below are the ones that need a person.
 

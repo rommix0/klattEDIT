@@ -32,7 +32,7 @@ function MouseAt($h, $msg, $x, $y, $keys) {
 }
 $WM_COMMAND = 0x111; $WM_LBUTTONDOWN = 0x201; $WM_LBUTTONUP = 0x202; $WM_MOUSEMOVE = 0x200; $MK_LBUTTON = 1
 
-$p = Start-Process -FilePath "$Repo\build\32\kpe.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
+$p = Start-Process -FilePath "$Repo\build\32\klattEDIT.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
 Start-Sleep -Milliseconds 1500
 $p.Refresh(); $main = $p.MainWindowHandle
 try {

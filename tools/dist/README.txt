@@ -1,4 +1,4 @@
-kpe_open - Klatt Parameter Editor and Klatt synthesizer DLL
+klattEDIT - an editor for Klatt synthesis parameters, and its Klatt synthesizer DLL
 =============================================================
 
 A clean-room editor for Klatt (1980) synthesis parameters, with its own synthesizer DLL (version 1.2).
@@ -7,7 +7,7 @@ A clean-room editor for Klatt (1980) synthesis parameters, with its own synthesi
 The editor
 ----------
 
-Start kpe.exe; keep klatt32.dll in the same folder. File > Open... and choose ba.csv for an example, or
+Start klattEDIT.exe; keep klatt32.dll in the same folder. File > Open... and choose ba.csv for an example, or
 File > Import WAV... to start from a recording.
 
 - Drag in a strip to draw its track; Shift+drag draws a straight line; drag in the time ruler to select.

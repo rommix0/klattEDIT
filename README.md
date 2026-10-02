@@ -1,4 +1,4 @@
-# kpe_open
+# klattEDIT
 
 An open-source, 32-bit Windows editor for Klatt (1980) synthesis parameters, and a Klatt 1980 formant
 synthesizer DLL (32- and 64-bit) that other programs can use, with an optional LF voicing source, the flutter
@@ -8,7 +8,7 @@ and diplophonia controls of Klatt & Klatt (1990) and a speaking-speed control.
 - `kpe/`: the editor. Its core (document and undo, CSV files, optimization, synthesis, WAV, spectrogram, and the
   WAV import's analysis) has no user interface and is covered by the tests; the Win32 GUI is built on top of it.
 - `tests/`: the test runner. `tools/`: build helpers. `samples/python/`: using the DLL from Python.
-- Design: `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, for the voice source and WAV import
+- Design: `docs/superpowers/specs/2026-09-28-klattedit-design.md`, for the voice source and WAV import
   `docs/superpowers/specs/2026-09-29-voice-source-and-wav-import-design.md`, and for the speaking speed, cropping,
   steadier imports and smoothing `docs/superpowers/specs/2026-09-30-speed-crop-smoothing-design.md`.
 
@@ -25,7 +25,7 @@ Needs winlibs GCC 14.2 in `C:\winlibs\mingw32` and `C:\winlibs\mingw64`, and Git
 
 ## The editor
 
-`build/32/kpe.exe [file.csv]` (keep `klatt32.dll` next to it). Parameters are painted with the mouse:
+`build/32/klattEDIT.exe [file.csv]` (keep `klatt32.dll` next to it). Parameters are painted with the mouse:
 drag in a strip to draw its track, Shift+drag for a straight line, drag in the time ruler to select frames.
 Drag the gap between two strips to resize them, or a strip's label to move it (View > Reset strip layout undoes it).
 Every edit re-synthesizes; Space plays, Ctrl+Z undoes. The global SPD plays the document faster or slower without

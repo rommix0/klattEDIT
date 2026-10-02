@@ -41,7 +41,7 @@ function Wait-Window($cls, $title) {
 }
 $WM_COMMAND = 0x111; $WM_SETTEXT = 0x0C; $WM_KEYDOWN = 0x100
 
-$p = Start-Process -FilePath "$Repo\build\32\kpe.exe" -PassThru
+$p = Start-Process -FilePath "$Repo\build\32\klattEDIT.exe" -PassThru
 Start-Sleep -Milliseconds 1500
 $p.Refresh(); $main = $p.MainWindowHandle
 try {
@@ -80,7 +80,7 @@ Shot $main "ui2_after_edit"
 [U]::SendMessageW($main, $WM_COMMAND, [IntPtr]1301, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 250
 Shot $main "ui2_playing"
-$box = [U]::FindWindowW("#32770", "Klatt Parameter Editor")
+$box = [U]::FindWindowW("#32770", "klattEDIT")
 "message box after play: $box"
 Start-Sleep -Milliseconds 600
 

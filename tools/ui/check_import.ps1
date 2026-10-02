@@ -68,7 +68,7 @@ $IDM_SAVEAS = 1004; $IDM_EXPORTWAV = 1005; $IDM_IMPORTWAV = 1007; $IDM_TABLE = 1
 $IDC_WAVE = 2405; $IDC_RANGE_START = 2406; $IDC_RANGE_END = 2407
 
 $wav = "$Out\ui_import.wav"; Remove-Item $wav -ErrorAction SilentlyContinue
-$p = Start-Process -FilePath "$Repo\build\32\kpe.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
+$p = Start-Process -FilePath "$Repo\build\32\klattEDIT.exe" -ArgumentList "`"$Repo\samples\ba.csv`"" -PassThru
 Start-Sleep -Milliseconds 1500
 $p.Refresh(); $main = $p.MainWindowHandle
 try {
@@ -100,7 +100,7 @@ $start = Field $IDC_RANGE_START; $end = Field $IDC_RANGE_END
 Shot $dlg "ui_import_range"
 if (-not ($start -gt 0.15 -and $start -lt 0.25 -and $end -gt 0.55 -and $end -lt 0.65)) { throw "the range is $start - $end s" }
 [U]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]$IDOK, [IntPtr]::Zero) | Out-Null
-WaitTitle $main "ui_import.wav* - Klatt Parameter Editor"
+WaitTitle $main "ui_import.wav* - klattEDIT"
 Start-Sleep -Milliseconds 500
 Shot $main "ui_import_result"
 "imported: $(Title $main)"
@@ -122,14 +122,14 @@ if (-not ($names -contains "ui_import.csv")) { throw "Save As suggests '$($names
 Start-Sleep -Milliseconds 400
 
 [U]::PostMessageW($main, $WM_COMMAND, [IntPtr]$IDM_IMPORTWAV, [IntPtr]::Zero) | Out-Null   # a CSV file as the WAV
-$ask = WaitDialog "Klatt Parameter Editor"                                                 # unsaved changes: No
+$ask = WaitDialog "klattEDIT"                                                 # unsaved changes: No
 [U]::PostMessageW($ask, $WM_COMMAND, [IntPtr]$IDNO, [IntPtr]::Zero) | Out-Null
 TypePath (WaitDialog "Open") "$Repo\samples\ba.csv"
-$err = WaitDialog "Klatt Parameter Editor"                                                 # read first: no Import dialog
+$err = WaitDialog "klattEDIT"                                                 # read first: no Import dialog
 Shot $err "ui_import_error"
 [U]::PostMessageW($err, $WM_COMMAND, [IntPtr]$IDOK, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 400
-WaitTitle $main "ui_import.wav* - Klatt Parameter Editor"
+WaitTitle $main "ui_import.wav* - klattEDIT"
 "after the error: $(Title $main)"
 } finally {
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
