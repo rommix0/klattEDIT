@@ -9,12 +9,14 @@
 #include "app.h"
 #include "view.h"
 
-enum { DRAG_NONE, DRAG_PAINT, DRAG_LINE, DRAG_SELECT };
+enum { DRAG_NONE, DRAG_PAINT, DRAG_LINE, DRAG_SELECT, DRAG_RESIZE, DRAG_MOVE };
 
 static struct {
 	int mode, param;
 	double press_t, press_v, prev_t, prev_v, cur_t, cur_v;
 	int press_x, press_frame;
+	int press_y, gap, drop; /* DRAG_RESIZE: the gap's index; DRAG_MOVE: where the strip lands, or -1 */
+	strip_setup before;     /* DRAG_RESIZE: the strips as they were at the press */
 } drag;
 
 static struct {
@@ -54,11 +56,21 @@ static int frame_at(double x)
 	return k < 0 ? 0 : k >= app.doc.nframes ? app.doc.nframes - 1 : k;
 }
 
-static int layout(strip_rect *s)
+static double scale(void)
+{
+	return app.dpi / 96.0;
+}
+
+static int layout_of(const strip_setup *su, strip_rect *s)
 {
 	RECT rc;
 	GetClientRect(app.plot, &rc);
-	return view_layout(app.visible, MT(), rc.bottom - MT() - MB(), S(64), S(8), s);
+	return view_layout(su, app.visible, MT(), rc.bottom - MT() - MB(), scale(), S(8), s);
+}
+
+static int layout(strip_rect *s)
+{
+	return layout_of(&app.strips, s);
 }
 
 static COLORREF track_color(int p)
@@ -391,6 +403,14 @@ static void paint(HDC dc, RECT rc)
 		SelectObject(dc, old);
 		DeleteObject(pp);
 	}
+	if (drag.mode == DRAG_MOVE && drag.drop >= 0) { /* where the dragged strip will land */
+		int y = drag.drop < n ? strips[drag.drop].top - S(4) : strips[n - 1].top + strips[n - 1].height + S(4);
+		HPEN mp = CreatePen(PS_SOLID, S(3), RGB(24, 95, 165));
+		old = SelectObject(dc, mp);
+		line(dc, 0, y, x1, y);
+		SelectObject(dc, old);
+		DeleteObject(mp);
+	}
 	if (drag.mode == DRAG_LINE) {
 		for (int i = 0; i < n; i++) {
 			int sp = strips[i].param;
@@ -472,6 +492,22 @@ static void mouse_down(HWND h, int x, int y, WPARAM keys)
 	GetClientRect(h, &rc);
 	strip_rect strips[NP];
 	int n = layout(strips);
+	int gap = view_gap_at(strips, n, y);
+	if (gap >= 0) { /* resize the strips on either side */
+		drag.mode = DRAG_RESIZE;
+		drag.gap = gap;
+		drag.press_y = y;
+		drag.before = app.strips;
+		SetCapture(h);
+		return;
+	}
+	if (x < ML() && strip_at(y, strips, n)) { /* the label area: move the strip */
+		drag.mode = DRAG_MOVE;
+		drag.param = strip_at(y, strips, n)->param;
+		drag.drop = -1;
+		SetCapture(h);
+		return;
+	}
 	if (x < ML() || x > ML() + plot_width())
 		return;
 	if (y >= rc.bottom - MB()) {
@@ -523,7 +559,19 @@ static void mouse_move(HWND h, int x, int y)
 		return;
 	}
 	strip_rect strips[NP];
+	if (drag.mode == DRAG_RESIZE) { /* from the heights at the press, so rounding does not add up */
+		int n = layout_of(&drag.before, strips);
+		app.strips = drag.before;
+		view_resize(&app.strips, strips, n, drag.gap, y - drag.press_y, scale());
+		InvalidateRect(h, NULL, FALSE);
+		return;
+	}
 	int n = layout(strips);
+	if (drag.mode == DRAG_MOVE) {
+		drag.drop = view_drop_at(strips, n, y);
+		InvalidateRect(h, NULL, FALSE);
+		return;
+	}
 	for (int i = 0; i < n; i++) {
 		int sp = strips[i].param;
 		if (sp == drag.param || (sp == FORMANT_STRIP && drag.param >= KP_F1 && drag.param <= KP_F4)) {
@@ -553,6 +601,11 @@ static void finish_drag(int x)
 		doc_paint(&app.doc, drag.param, drag.press_t, drag.press_v, drag.cur_t, drag.cur_v);
 		doc_end(&app.doc);
 		app_changed(CHG_VALUES);
+	} else if (mode == DRAG_MOVE && drag.drop >= 0) {
+		strip_rect strips[NP];
+		int n = layout(strips);
+		view_move(&app.strips, drag.param, drag.drop < n ? strips[drag.drop].param : VIEW_END);
+		InvalidateRect(app.plot, NULL, FALSE);
 	} else if (mode == DRAG_SELECT) {
 		if (abs(x - drag.press_x) < S(3)) {
 			app.sel_a = -1;
@@ -600,6 +653,22 @@ static LRESULT CALLBACK plot_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 			ReleaseCapture();
 		}
 		return 0;
+	case WM_SETCURSOR: {
+		POINT pt;
+		GetCursorPos(&pt);
+		ScreenToClient(h, &pt);
+		strip_rect strips[NP];
+		int n = layout(strips);
+		LPCWSTR c = NULL;
+		if (drag.mode == DRAG_RESIZE || (drag.mode == DRAG_NONE && view_gap_at(strips, n, pt.y) >= 0))
+			c = IDC_SIZENS;
+		else if (drag.mode == DRAG_MOVE || (drag.mode == DRAG_NONE && pt.x < ML() && strip_at(pt.y, strips, n)))
+			c = IDC_HAND;
+		if (LOWORD(lp) != HTCLIENT || !c)
+			break;
+		SetCursor(LoadCursor(NULL, c));
+		return TRUE;
+	}
 	case WM_CAPTURECHANGED:
 		if (drag.mode == DRAG_PAINT || drag.mode == DRAG_LINE) /* capture lost mid-drag: keep what was painted */
 			finish_drag(drag.press_x);

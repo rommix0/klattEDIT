@@ -27,6 +27,7 @@ Needs winlibs GCC 14.2 in `C:\winlibs\mingw32` and `C:\winlibs\mingw64`, and Git
 
 `build/32/kpe.exe [file.csv]` (keep `klatt32.dll` next to it). Parameters are painted with the mouse:
 drag in a strip to draw its track, Shift+drag for a straight line, drag in the time ruler to select frames.
+Drag the gap between two strips to resize them, or a strip's label to move it (View > Reset strip layout undoes it).
 Every edit re-synthesizes; Space plays, Ctrl+Z undoes. The global SPD plays the document faster or slower without
 changing its pitch (the strips always show it as written). Edit > Crop to selection keeps only the selected frames.
 Parameters > Optimize smooths tracks (F1-F4 by default) and then simplifies them. A document is a pair of CSV files,

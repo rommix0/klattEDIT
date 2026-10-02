@@ -224,6 +224,15 @@ void KlattDestroy(klatt_h h);
   FRAME_MS, SPD, SRC, NFC, SW, G0, F5, F6). The panel scrolls vertically when it is taller than the window.
 - **Strips:** one strip per ticked parameter, stacked, each with its own Y axis showing units and automatically
   chosen ticks, and horizontal grid lines at the ticks.
+- **Strip layout:** dragging the gap between two strips (the pointer becomes an up-down arrow) makes the strip
+  above taller and the one below shorter by the same amount, for finer drawing; a parameter strip is at least
+  24 px high and the spectrogram strip at least 128 px (at 96 DPI). Dragging a strip by its label area (left of
+  its plot, where the pointer becomes a hand) moves it, the spectrogram strip included; a line shows where it will
+  land. Parameter strips start 64 px high in the order of the left panel with the spectrogram strip after DI; the
+  spectrogram strip takes the height the others leave, and when the window is too short for them they shrink in
+  proportion down to their minimum. Hidden strips keep their height and place. The layout lasts for the session;
+  View > Reset strip layout restores the default. The order and heights live in `view.c` (`strip_setup`, no
+  Win32); `strips.c` handles the mouse.
 - **Spectrogram strip:** the spectrogram of the current synthesis with the ticked F1-F4 tracks drawn over it.
   F5 and F6 are globals, drawn as dashed constant lines.
 - **Time axis:** shared by all strips, in milliseconds along the bottom; vertical grid lines through every strip.

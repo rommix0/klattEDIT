@@ -2,33 +2,116 @@
 #include <math.h>
 #include "view.h"
 
-static const int before[] = { KP_F0, KP_AV, KP_AF, KP_AH, KP_AVS, KP_RD, KP_DI };
-static const int after[] = { KP_B1, KP_B2, KP_B3, KP_FNZ, KP_AN, KP_A1, KP_A2, KP_A3, KP_A4, KP_A5, KP_A6, KP_AB };
-
-int view_layout(const int *visible, int top, int height, int unit, int gap, strip_rect *out)
+void view_setup_default(strip_setup *su)
 {
-	int n = 0, small = 0;
-	for (unsigned i = 0; i < sizeof before / sizeof before[0]; i++)
-		small += visible[before[i]] != 0;
-	for (unsigned i = 0; i < sizeof after / sizeof after[0]; i++)
-		small += visible[after[i]] != 0;
-	int fh = height - small * (unit + gap);
-	if (fh < 2 * unit)
-		fh = 2 * unit;
+	static const int order[] = { KP_F0, KP_AV, KP_AF, KP_AH, KP_AVS, KP_RD, KP_DI, FORMANT_STRIP, KP_B1, KP_B2,
+		KP_B3, KP_FNZ, KP_AN, KP_A1, KP_A2, KP_A3, KP_A4, KP_A5, KP_A6, KP_AB };
+	su->count = (int)(sizeof order / sizeof order[0]);
+	for (int i = 0; i < su->count; i++)
+		su->order[i] = order[i];
+	for (int p = 0; p < NP; p++)
+		su->height[p] = VIEW_STRIP_H;
+}
+
+static int scaled(int px, double scale)
+{
+	return (int)lround(px * scale);
+}
+
+static int min_height(int param, double scale)
+{
+	return scaled(param == FORMANT_STRIP ? VIEW_FORMANT_MIN : VIEW_MIN_H, scale);
+}
+
+int view_layout(const strip_setup *su, const int *visible, int top, int height, double scale, int gap,
+                strip_rect *out)
+{
+	int n = 0, want = 0;
+	for (int i = 0; i < su->count; i++) {
+		int p = su->order[i];
+		if (p != FORMANT_STRIP && !visible[p])
+			continue;
+		out[n] = (strip_rect){ p, 0, p == FORMANT_STRIP ? 0 : scaled(su->height[p], scale) };
+		want += out[n++].height;
+	}
+	int room = height - (n - 1) * gap - min_height(FORMANT_STRIP, scale); /* for the parameter strips */
+	int used = 0;
+	for (int i = 0; i < n; i++) {
+		if (out[i].param == FORMANT_STRIP)
+			continue;
+		if (want > room) {
+			int h = (int)floor(out[i].height * (double)room / want), lo = min_height(out[i].param, scale);
+			out[i].height = h < lo ? lo : h;
+		}
+		used += out[i].height;
+	}
 	int y = top;
-	for (unsigned i = 0; i < sizeof before / sizeof before[0]; i++)
-		if (visible[before[i]]) {
-			out[n++] = (strip_rect){ before[i], y, unit };
-			y += unit + gap;
+	for (int i = 0; i < n; i++) {
+		if (out[i].param == FORMANT_STRIP) {
+			int fh = height - (n - 1) * gap - used, lo = min_height(FORMANT_STRIP, scale);
+			out[i].height = fh < lo ? lo : fh;
 		}
-	out[n++] = (strip_rect){ FORMANT_STRIP, y, fh };
-	y += fh + gap;
-	for (unsigned i = 0; i < sizeof after / sizeof after[0]; i++)
-		if (visible[after[i]]) {
-			out[n++] = (strip_rect){ after[i], y, unit };
-			y += unit + gap;
-		}
+		out[i].top = y;
+		y += out[i].height + gap;
+	}
 	return n;
+}
+
+int view_gap_at(const strip_rect *s, int n, int y)
+{
+	for (int i = 0; i + 1 < n; i++)
+		if (y >= s[i].top + s[i].height && y < s[i + 1].top)
+			return i;
+	return -1;
+}
+
+void view_resize(strip_setup *su, const strip_rect *s, int n, int i, int dy, double scale)
+{
+	if (i < 0 || i + 1 >= n)
+		return;
+	const strip_rect *a = &s[i], *b = &s[i + 1];
+	int lo = min_height(a->param, scale) - a->height, hi = b->height - min_height(b->param, scale);
+	if (dy > hi)
+		dy = hi;
+	if (dy < lo)
+		dy = lo;
+	if (lo > hi) /* both already below their minimums */
+		dy = 0;
+	if (a->param != FORMANT_STRIP)
+		su->height[a->param] = (int)lround((a->height + dy) / scale);
+	if (b->param != FORMANT_STRIP)
+		su->height[b->param] = (int)lround((b->height - dy) / scale);
+}
+
+int view_drop_at(const strip_rect *s, int n, int y)
+{
+	int k = 0;
+	while (k < n && s[k].top + s[k].height / 2 <= y)
+		k++;
+	return k;
+}
+
+void view_move(strip_setup *su, int id, int before)
+{
+	if (id == before)
+		return;
+	int from = -1;
+	for (int i = 0; i < su->count; i++)
+		if (su->order[i] == id)
+			from = i;
+	if (from < 0)
+		return;
+	for (int i = from; i + 1 < su->count; i++)
+		su->order[i] = su->order[i + 1];
+	int to = su->count - 1;
+	for (int i = 0; i < su->count - 1; i++)
+		if (su->order[i] == before) {
+			to = i;
+			break;
+		}
+	for (int i = su->count - 1; i > to; i--)
+		su->order[i] = su->order[i - 1];
+	su->order[to] = id;
 }
 
 double view_nice_step(double range, double pixels, double min_px)

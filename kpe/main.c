@@ -610,6 +610,10 @@ static void command(int id)
 	case IDM_ZOOMIN: plot_zoom(0.5); break;
 	case IDM_ZOOMOUT: plot_zoom(2); break;
 	case IDM_ZOOMFIT: plot_fit(); break;
+	case IDM_RESETSTRIPS:
+		view_setup_default(&app.strips);
+		InvalidateRect(app.plot, NULL, FALSE);
+		break;
 	case IDM_PARAMREF: dlg_paramref(app.main); break;
 	case IDM_ABOUT:
 		MessageBoxW(app.main,
@@ -859,6 +863,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmdline, int show)
 	static const int shown[] = { KP_F0, KP_AV, KP_AF, KP_AH, KP_F1, KP_F2, KP_F3, KP_F4 };
 	for (unsigned i = 0; i < sizeof shown / sizeof shown[0]; i++)
 		app.visible[shown[i]] = 1;
+	view_setup_default(&app.strips);
 	double g[NG];
 	default_globals(g);
 	if (doc_new(&app.doc, g, 800) < 0)

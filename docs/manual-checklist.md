@@ -19,6 +19,12 @@ save screenshots in `build/ui/`; the items below are the ones that need a person
       reach the last global line (F6). Enlarging the window until everything fits hides the scrollbar.
 - [ ] The panel's globals include SPD, which follows Parameters > Globals; the strips and the spectrogram do not
       change with SPD.
+- [ ] Over the gap between two strips the pointer is an up-down arrow; dragging it makes the strip above taller
+      and the one below shorter, and stops at a minimum height; painting in the taller strip is finer.
+- [ ] Over a strip's label area (left of its plot) the pointer is a hand; dragging moves the strip (also the
+      spectrogram strip) and a line shows where it will land. Hiding and showing a strip keeps its height and place.
+- [ ] Enlarging strips and then making the window short shrinks them in proportion; the spectrogram strip keeps
+      its minimum. View > Reset strip layout restores the default order and heights.
 
 ## Editing
 

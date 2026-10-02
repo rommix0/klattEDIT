@@ -2,7 +2,7 @@ param([string]$Repo = (Resolve-Path "$PSScriptRoot\..\..").Path)
 $Out = "$Repo\build\ui"; New-Item -ItemType Directory -Force $Out | Out-Null
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
-using System; using System.Runtime.InteropServices;
+using System; using System.Runtime.InteropServices; using System.Text;
 public class U {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
@@ -13,6 +13,8 @@ public class U {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowExW(IntPtr p, IntPtr a, string c, string t);
   [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, StringBuilder l);
+  public static string Text(IntPtr h) { var sb = new StringBuilder(512); SendMessageW(h, 0x0D, (IntPtr)512, sb); return sb.ToString(); }
   public struct RECT { public int L, T, R, B; }
   public struct POINT { public int X, Y; }
 }
@@ -96,6 +98,35 @@ Start-Sleep -Milliseconds 700
 $dlg = [U]::FindWindowW("#32770", "Parameter reference"); Shot $dlg "ui_paramref"
 [U]::PostMessageW($dlg, $WM_COMMAND, [IntPtr]1, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 400
+
+# Strip layout: drag the gap below F0 down 40 px (AV gives up the 40 px), so a row that was in AV is now in F0;
+# then drag AH by its label to the top. The status bar names the strip under the pointer.
+$status = [U]::FindWindowExW($main, [IntPtr]::Zero, "msctls_statusbar32", $null)
+function StripAt($y) { MouseAt $plot $WM_MOUSEMOVE (X 100) $y 0; [U]::Text($status) }
+$probe = $MT + (Scale 64) + (Scale 20)
+$before = StripAt $probe
+if ($before -notmatch " AV ") { throw "before the resize, row $probe is not in AV: $before" }
+$gy = $MT + (Scale 64) + (Scale 4)
+MouseAt $plot $WM_LBUTTONDOWN (X 100) $gy $MK_LBUTTON
+MouseAt $plot $WM_MOUSEMOVE (X 100) ($gy + (Scale 40)) $MK_LBUTTON
+MouseAt $plot $WM_LBUTTONUP (X 100) ($gy + (Scale 40)) 0
+$after = StripAt $probe
+"after the resize: $after"
+if ($after -notmatch " F0 ") { throw "the resize did not grow F0: $after" }
+$ahMid = $MT + (Scale 104) + (Scale 24) + (Scale 64) + 3 * (Scale 8) + (Scale 32) # F0 104, AV 24 (it gave 40), AF 64, then AH
+MouseAt $plot $WM_LBUTTONDOWN (Scale 20) $ahMid $MK_LBUTTON
+MouseAt $plot $WM_MOUSEMOVE (Scale 20) ($MT + 2) $MK_LBUTTON
+Start-Sleep -Milliseconds 300
+Shot $main "ui_strip_drop"
+MouseAt $plot $WM_LBUTTONUP (Scale 20) ($MT + 2) 0
+$top = StripAt ($MT + (Scale 20))
+"after the move: $top"
+if ($top -notmatch " AH ") { throw "AH did not move to the top: $top" }
+Start-Sleep -Milliseconds 300
+Shot $main "ui_strips"
+[U]::SendMessageW($main, $WM_COMMAND, [IntPtr]1507, [IntPtr]::Zero) | Out-Null   # View > Reset strip layout
+$reset = StripAt $probe
+if ($reset -notmatch " AV ") { throw "the reset did not restore the layout: $reset" }
 Shot $main "ui_after_cancel"
 } finally {
 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue

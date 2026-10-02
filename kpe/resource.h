@@ -31,6 +31,7 @@
 #define IDM_ZOOMIN        1504
 #define IDM_ZOOMOUT       1505
 #define IDM_ZOOMFIT       1506
+#define IDM_RESETSTRIPS   1507
 #define IDM_PARAMREF      1601
 #define IDM_ABOUT         1602
 

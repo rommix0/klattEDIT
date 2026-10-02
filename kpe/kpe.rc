@@ -50,6 +50,8 @@ BEGIN
 		MENUITEM "Zoom &in\tCtrl++", IDM_ZOOMIN
 		MENUITEM "Zoom &out\tCtrl+-", IDM_ZOOMOUT
 		MENUITEM "Zoom to &fit\tCtrl+0", IDM_ZOOMFIT
+		MENUITEM SEPARATOR
+		MENUITEM "Reset strip &layout", IDM_RESETSTRIPS
 	END
 	POPUP "&Help"
 	BEGIN

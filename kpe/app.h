@@ -7,6 +7,7 @@
 #include "model.h"
 #include "spectro.h"
 #include "synthrun.h"
+#include "view.h"
 #include "wavimport.h"
 
 #define WM_APP_PLAYDONE (WM_APP + 1)
@@ -29,6 +30,7 @@ typedef struct {
 	double spec_top_hz;       /* top of the formant strip */
 
 	int visible[NP];          /* parameter strips; for F1-F4, tracks on the formant strip */
+	strip_setup strips;       /* the strips' order and heights, for this session */
 	double t0_ms, ms_per_px;  /* plot scroll position and zoom */
 	int cursor;               /* frame, or -1 */
 	int sel_a, sel_b;         /* selected frames sel_a..sel_b inclusive; sel_a < 0 when nothing is selected */
