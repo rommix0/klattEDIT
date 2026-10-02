@@ -4,6 +4,7 @@
 
 #define IDR_MENU          100
 #define IDR_ACCEL         101
+#define IDI_APP           102
 
 #define IDM_NEW           1001
 #define IDM_OPEN          1002

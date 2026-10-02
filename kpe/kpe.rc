@@ -2,6 +2,7 @@
 #include "resource.h"
 
 1 RT_MANIFEST "kpe.manifest"
+IDI_APP ICON "klattEDITA.ico"
 
 IDR_MENU MENU
 BEGIN

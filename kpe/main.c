@@ -871,7 +871,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmdline, int show)
 	WNDCLASSEXW wc = { .cbSize = sizeof wc };
 	wc.hInstance = inst;
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(IDI_APP));
+	wc.hIconSm = LoadImageW(inst, MAKEINTRESOURCEW(IDI_APP), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+	                        GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
 	wc.lpfnWndProc = main_proc;
 	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
 	wc.lpszMenuName = MAKEINTRESOURCEW(IDR_MENU);

@@ -51,7 +51,7 @@ ifeq ($(ARCH),32)
 build: $(KPE)
 endif
 
-$(OUT)/kpe_res.o: kpe/kpe.rc kpe/resource.h kpe/kpe.manifest | $(OUT)
+$(OUT)/kpe_res.o: kpe/kpe.rc kpe/resource.h kpe/kpe.manifest kpe/klattEDITA.ico | $(OUT)
 	$(BIN)/windres.exe -I kpe -O coff -o $@ kpe/kpe.rc
 
 $(KPE): $(GUI_SRC) $(CORE_SRC) $(wildcard kpe/*.h) $(OUT)/kpe_res.o $(DLL)
