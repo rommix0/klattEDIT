@@ -28,7 +28,7 @@ this design amends.
 
 ## 2. Sources and clean-room rules
 
-- The base spec's rules still hold: nothing from `C:\klsyn\src`, the IPOX binaries or `prose2000_reborn`; the
+- The base spec's rules still hold: nothing from `C:\klsyn\src` or `prose2000_reborn`; the
   Klatt (1980) Fortran listing is not transcribed.
 - **LF source:** Fant (1997) for the Rd to Ra/Rk/Rg mapping, Perrotin et al. (2021, Eqs. C2-C5) for the glottal-formant
   and tilt filters, as implemented in the user's own `fextr_sept2026/_vtm.py` (`LFSource`), which may be ported.

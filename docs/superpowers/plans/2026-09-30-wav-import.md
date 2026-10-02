@@ -5797,7 +5797,6 @@ The base spec's Part B items (spec section 5: sections 1, 3, 5.5, 8 and 9):
 In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
 
 ```markdown
-- Porting any other IPOX program (IPOX.EXE, IRC.EXE, PLAY.EXE, SETUP.EXE).
 - Resynthesis from WAV (see section 9, future work).
 - A command-line synthesis tool.
 ```
@@ -5805,7 +5804,6 @@ In `docs/superpowers/specs/2026-09-28-kpe-open-design.md`, replace:
 with:
 
 ```markdown
-- Porting any other IPOX program (IPOX.EXE, IRC.EXE, PLAY.EXE, SETUP.EXE).
 - Resynthesis from WAV in v1: it is designed in `2026-09-29-voice-source-and-wav-import-design.md` (Part B, File >
   Import WAV…).
 - A command-line synthesis tool.

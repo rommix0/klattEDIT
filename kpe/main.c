@@ -618,8 +618,7 @@ static void command(int id)
 	case IDM_ABOUT:
 		MessageBoxW(app.main,
 		            L"Klatt Parameter Editor (kpe_open) 1.0\n\n"
-		            L"A clean-room editor inspired by the Klatt Parameter Editor of IPOX "
-		            L"(Dirksen and Coleman, 1995). It contains no original IPOX code.\n\n"
+		            L"An open-source editor for Klatt synthesis parameters.\n\n"
 		            L"Synthesizer: Klatt (1980), J. Acoust. Soc. Am. 67, 971-995.",
 		            L"About", MB_OK | MB_ICONINFORMATION);
 		break;

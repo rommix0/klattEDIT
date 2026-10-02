@@ -1,15 +1,14 @@
 # AGENTS.md
 
-Notes for coding agents working on kpe_open: a clean-room Win32 C rewrite of IPOX's Klatt Parameter Editor
+Notes for coding agents working on kpe_open: an open-source Win32 C editor for Klatt synthesis parameters
 (`kpe.exe`) with its own Klatt synthesizer DLL (`klatt32.dll`/`klatt64.dll`) and a WAV import (copy synthesis).
 The design lives in `docs/superpowers/specs/` (base spec `2026-09-28-kpe-open-design.md`; DLL 1.1 and WAV import
 `2026-09-29-...`; speed, crop, smoothing `2026-09-30-...`). Read the spec before changing behaviour.
 
 ## Hard rules
 
-- Clean room: never read `C:\klsyn\src` or `C:\Users\abart\Desktop\prose2000_reborn`; never decompile, inspect or
-  run the original IPOX binaries; never port Numerical Recipes code (e.g. fextr's `burg_lpc`). The user's own code
-  in `fextr_sept2026` may be ported.
+- Clean room: never read `C:\klsyn\src` or `C:\Users\abart\Desktop\prose2000_reborn`; never port Numerical Recipes code
+  (e.g. fextr's `burg_lpc`). The user's own code in `fextr_sept2026` may be ported.
 - The DLL is synthesis only (plus the parameter table and error text): no file I/O, no UI. Ask the user before
   adding anything else to it. The analysis core (`kpe/` files other than main, strips, table, dialogs, audio) has
   no Win32 code.

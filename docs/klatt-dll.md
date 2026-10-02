@@ -130,4 +130,4 @@ Re-run it after any change to the signal path and copy the new values into `klat
 ## Parameters
 
 See Help > Parameter reference in the editor, or `klatt/params.c`. Defaults of the globals follow Table I of the
-paper, except SR = 11025 Hz and FRAME_MS = 5 ms, which come from IPOX.
+paper, except SR = 11025 Hz and FRAME_MS = 5 ms, the editor's chosen defaults.

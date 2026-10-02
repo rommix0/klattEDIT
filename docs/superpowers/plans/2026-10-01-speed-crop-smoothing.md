@@ -6482,19 +6482,18 @@ with:
 In `README.md`, replace:
 
 ```markdown
-A clean-room, 32-bit Windows successor to the IPOX Klatt Parameter Editor (1995), and a Klatt 1980 formant
+An open-source, 32-bit Windows editor for Klatt (1980) synthesis parameters, and a Klatt 1980 formant
 synthesizer DLL (32- and 64-bit) that other programs can use, with an optional LF voicing source and the flutter
-and diplophonia controls of Klatt & Klatt (1990). Nothing here is derived from the original IPOX binaries.
+and diplophonia controls of Klatt & Klatt (1990).
 
 ```
 
 with:
 
 ```markdown
-A clean-room, 32-bit Windows successor to the IPOX Klatt Parameter Editor (1995), and a Klatt 1980 formant
+An open-source, 32-bit Windows editor for Klatt (1980) synthesis parameters, and a Klatt 1980 formant
 synthesizer DLL (32- and 64-bit) that other programs can use, with an optional LF voicing source, the flutter
-and diplophonia controls of Klatt & Klatt (1990) and a speaking-speed control. Nothing here is derived from the
-original IPOX binaries.
+and diplophonia controls of Klatt & Klatt (1990) and a speaking-speed control.
 
 ```
 

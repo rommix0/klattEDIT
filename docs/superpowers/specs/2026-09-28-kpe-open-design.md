@@ -1,7 +1,7 @@
 # kpe_open: design
 
-A clean-room, 32-bit Windows successor to the IPOX Klatt Parameter Editor (KPE, 1995), plus a standalone
-Klatt 1980 formant synthesizer DLL that other programs can use.
+An open-source, 32-bit Windows editor for Klatt synthesizer parameters, plus a standalone Klatt 1980 formant
+synthesizer DLL that other programs can use.
 
 Date: 2026-09-28. Status: approved in brainstorming, pending written-spec review.
 
@@ -14,13 +14,11 @@ Date: 2026-09-28. Status: approved in brainstorming, pending written-spec review
   time axis in milliseconds, and painting to edit.
 - A Klatt 1980 cascade/parallel formant synthesizer as a DLL, built both as `klatt32.dll` (i686) and
   `klatt64.dll` (x86_64) from the same source, callable from C, Python `ctypes`, VB, Delphi and similar.
-- A license-clean result: nothing derived from the original IPOX binaries, `klsyn`'s source, or the
-  `prose2000_reborn` decompilation.
+- A license-clean result: nothing derived from `klsyn`'s source or the `prose2000_reborn` decompilation.
 
 **Non-goals (v1)**
 
-- Any support for IPOX's `.PAR` format (text or binary), or a clone of the old `KLATT.DLL` `Klatt()` entry point.
-- Porting any other IPOX program (IPOX.EXE, IRC.EXE, PLAY.EXE, SETUP.EXE).
+- Reading or writing any other program's parameter file formats.
 - A command-line synthesis tool.
 
 Resynthesis from a WAV recording (File > Import WAV…) is designed separately, in
@@ -28,9 +26,7 @@ Resynthesis from a WAV recording (File > Import WAV…) is designed separately, 
 
 ## 2. Clean-room rules
 
-- The UI is designed fresh from what is publicly known about KPE: its menu names (File, Synthesis, Sound,
-  Parameters, Help), that it edits and displays formant tracks, and that global parameters were read-only.
-  KPE.EXE's code and resources are never inspected, and it is never run.
+- The UI is designed fresh, from the workflow agreed in brainstorming.
 - The synthesizer is implemented from the equations, block diagram and parameter table in
   D.H. Klatt (1980), "Software for a cascade/parallel formant synthesizer", JASA 67, 971-995. The paper's Fortran
   listing is copyrighted and is not transcribed.
@@ -121,7 +117,7 @@ added in DLL 1.1, and SPD (global) added in DLL 1.2. The paper's SR and NWS beco
   Y-axis ranges are the same limits.
 - **Defaults of globals** control how the synthesizer sounds, so they must match the paper: the implementation
   checks them against Table I and uses the paper's value wherever it differs from the table below. SR = 11025 Hz
-  and FRAME_MS = 5 ms are deliberate exceptions, taken from IPOX.
+  and FRAME_MS = 5 ms are deliberate exceptions, the editor's chosen defaults.
 - **Defaults of frame parameters** are the starting values for a new document and for missing CSV columns.
 
 | Kind | Name | Meaning | Unit | Min | Max | Default |
@@ -292,7 +288,7 @@ void KlattDestroy(klatt_h h);
   analysed (at least 50 ms); the recording opens as a new unsaved document titled after the WAV. See
   `2026-09-29-voice-source-and-wav-import-design.md`, section 4, and `2026-09-30-speed-crop-smoothing-design.md`.
 - **Help > Parameter reference:** the parameter table, read from the DLL.
-- **Help > About:** a clean-room editor inspired by IPOX's Klatt Parameter Editor; contains no original IPOX code.
+- **Help > About:** the program's name and version, and the Klatt (1980) reference.
 
 ### 5.6 Parameter optimization
 
