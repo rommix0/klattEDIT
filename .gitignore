@@ -2,3 +2,4 @@ build/
 .superpowers/
 session_memory.json
 /dist/
+/fwavs/
