@@ -1,7 +1,7 @@
 klattEDIT - an editor for Klatt synthesis parameters, and its Klatt synthesizer DLL
 =============================================================
 
-A clean-room editor for Klatt (1980) synthesis parameters, with its own synthesizer DLL (version 1.2).
+A clean-room editor for Klatt (1980) synthesis parameters, with its own synthesizer DLL (version 1.3).
 
 
 The editor
