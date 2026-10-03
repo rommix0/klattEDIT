@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#define KLATT_VERSION 10200 /* 1.2.0, as major*10000 + minor*100 + patch */
+#define KLATT_VERSION 10300 /* 1.3.0, as major*10000 + minor*100 + patch */
 
 enum { KLATT_FRAME = 0, KLATT_GLOBAL = 1 }; /* parameter kinds */
 

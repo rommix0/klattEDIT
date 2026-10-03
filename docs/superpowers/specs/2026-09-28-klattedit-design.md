@@ -150,7 +150,7 @@ added in DLL 1.1, and SPD (global) added in DLL 1.2. The paper's SR and NWS beco
 | global | B4 | formant 4 bandwidth | Hz | 100 | 500 | 250 |
 | global | F5 | formant 5 | Hz | 3500 | 4900 | 3750 |
 | global | B5 | formant 5 bandwidth | Hz | 150 | 700 | 200 |
-| global | F6 | formant 6 | Hz | 4000 | 4999 | 4900 |
+| global | F6 | formant 6 (to 4999 before DLL 1.3) | Hz | 4000 | 8000 | 4900 |
 | global | B6 | formant 6 bandwidth | Hz | 200 | 2000 | 1000 |
 | global | SR | sample rate | Hz | 5000 | 20000 | 11025 |
 | global | FRAME_MS | frame length | ms | 1 | 20 | 5 |

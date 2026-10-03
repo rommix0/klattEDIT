@@ -6,7 +6,7 @@
 static void test_counts_and_version(void)
 {
 	CHECK(KlattVersion() == KLATT_VERSION);
-	CHECK(KLATT_VERSION == 10200);
+	CHECK(KLATT_VERSION == 10300);
 	CHECK(KlattParamCount(KLATT_FRAME) == 23);
 	CHECK(KlattParamCount(KLATT_GLOBAL) == 21);
 	CHECK(KlattParamCount(7) == KLATT_ERR_ARG);
@@ -29,6 +29,10 @@ static void test_info(void)
 	CHECK_NEAR(pi.min, 0.25, 0);
 	CHECK_NEAR(pi.max, 4, 0);
 	CHECK_NEAR(pi.def, 1, 0);
+	CHECK(KlattParamInfo(KLATT_GLOBAL, KG_F6, &pi) == KLATT_OK); /* 1.3: up to 8000 Hz (4999 before) */
+	CHECK_NEAR(pi.min, 4000, 0);
+	CHECK_NEAR(pi.max, 8000, 0);
+	CHECK_NEAR(pi.def, 4900, 0);
 	CHECK(KlattParamInfo(KLATT_GLOBAL, 21, &pi) == KLATT_ERR_ARG);
 	CHECK(KlattParamInfo(KLATT_FRAME, 23, &pi) == KLATT_ERR_ARG);
 	CHECK(KlattParamInfo(KLATT_FRAME, -1, &pi) == KLATT_ERR_ARG);

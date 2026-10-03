@@ -62,6 +62,21 @@ static void test_frication_is_high_frequency(void)
 	CHECK(m_band_fraction(a + 1102, n - 1102, 11025, 3000, 5512) > 0.8);
 }
 
+/* 1.3: F6 above the old 4999 Hz limit is used as given. Frication through R6 alone at SR 16000 with F6 = 6000 Hz
+ * puts most of its energy between 5500 and 6500 Hz (0.88 measured; 0.06 with 1.2's limit of 4999 Hz). */
+static void test_f6_above_4999(void)
+{
+	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
+	setup(g, f);
+	g[KG_SR] = 16000;
+	g[KG_F6] = 6000;
+	g[KG_B6] = 200;
+	f[KP_AF] = 60;
+	f[KP_A6] = 60;
+	int n = t_synth_steady(g, f, 200, a, 40000);
+	CHECK(m_band_fraction(a + 1600, n - 1600, 16000, 5500, 6500) > 0.5);
+}
+
 static void test_bypass_passes_frication(void)
 {
 	double g[KLATT_NUM_GLOBAL], f[KLATT_NUM_FRAME];
@@ -102,6 +117,7 @@ void suite_synth_noise(void)
 	test_same_seed_same_output();
 	test_aspiration_level();
 	test_frication_is_high_frequency();
+	test_f6_above_4999();
 	test_bypass_passes_frication();
 	test_nasal_zero_notch();
 	test_parallel_nasal();

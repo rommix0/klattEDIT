@@ -1,7 +1,8 @@
 /* klatt.c - Klatt (1980) cascade/parallel formant synthesizer, implemented from the paper's equations and
  * block diagram (D.H. Klatt, JASA 67, 971-995), with the 1.1 extensions: an LF voicing source driven by Rd
- * (Fant 1997; Perrotin et al. 2021), flutter and diplophonia (Klatt & Klatt 1990, JASA 87, 820-857), and 1.2's
- * speaking speed (SPD, a time scale of the frames only). See docs/klatt-dll.md for the signal path and calibration. */
+ * (Fant 1997; Perrotin et al. 2021), flutter and diplophonia (Klatt & Klatt 1990, JASA 87, 820-857), 1.2's
+ * speaking speed (SPD, a time scale of the frames only) and 1.3's F6 range up to 8000 Hz. See docs/klatt-dll.md for
+ * the signal path and calibration. */
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>

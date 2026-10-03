@@ -5,6 +5,7 @@ D.H. Klatt (1980), "Software for a cascade/parallel formant synthesizer", JASA 6
 the same source and produce the same samples. Version 1.1 adds a selectable Liljencrants-Fant (LF) voicing source
 shaped by Rd, Rd's tilt on the 1980 source, flutter (FL) and diplophonia (DI), and brings the noise source in line
 with the paper; see "Signal path" below. Version 1.2 adds the speaking speed SPD, a time scale of the frames.
+Version 1.3 raises F6's upper limit from 4999 to 8000 Hz.
 
 ## Using it
 
@@ -39,7 +40,7 @@ KlattDestroy(h);
 
 | Function | Returns |
 |---|---|
-| `KlattVersion()` | `KLATT_VERSION` (10200 = 1.2.0) |
+| `KlattVersion()` | `KLATT_VERSION` (10300 = 1.3.0) |
 | `KlattParamCount(kind)` | 23 for `KLATT_FRAME`, 21 for `KLATT_GLOBAL` |
 | `KlattParamInfo(kind, i, &info)` | name, unit, description, min, max, default |
 | `KlattParamIndex(kind, name)` | the index, case-insensitive; `KLATT_ERR_ARG` if unknown |
@@ -53,7 +54,11 @@ KlattDestroy(h);
 
 Version 1.1 appended Rd and DI to the frame parameters and SRC and FL to the globals, and version 1.2 appended SPD
 to the globals; no earlier index changed. A program built against an older header passes a globals array one or
-three values short and must be rebuilt.
+three values short and must be rebuilt. Version 1.3 changed no index, only F6's limits: 4000-8000 Hz (4999 before),
+so a speaker's sixth formant above 5 kHz (a male voice's lies near 5.5 kHz at 16 kHz sampling) is used as given.
+Like every frequency, F6 is still kept below SR/2, and the resonator is bypassed at or above 0.45 SR (7200 Hz at
+16 kHz); at the default 11025 Hz anything above 4961 Hz is bypassed. F6's default stays 4900, so every sample of a
+document that does not set F6 above 4999 is the same as in version 1.2.
 
 - Values outside a parameter's limits are clamped, NaN becomes the minimum, and frequencies are also kept below
   SR/2.

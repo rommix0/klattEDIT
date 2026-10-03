@@ -44,7 +44,7 @@ static const klatt_param_info global_params[KLATT_NUM_GLOBAL] = {
 	{ "B4",       "Hz", "formant 4 bandwidth",                   100,   500,   250 },
 	{ "F5",       "Hz", "formant 5 frequency",                  3500,  4900,  3750 },
 	{ "B5",       "Hz", "formant 5 bandwidth",                   150,   700,   200 },
-	{ "F6",       "Hz", "formant 6 frequency",                  4000,  4999,  4900 },
+	{ "F6",       "Hz", "formant 6 frequency",                  4000,  8000,  4900 },
 	{ "B6",       "Hz", "formant 6 bandwidth",                   200,  2000,  1000 },
 	{ "SR",       "Hz", "sample rate",                          5000, 20000, 11025 },
 	{ "FRAME_MS", "ms", "frame length",                            1,    20,     5 },
